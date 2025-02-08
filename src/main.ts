@@ -20,6 +20,7 @@ async function bootstrap() {
       methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
       credentials: true,
     });
+    app.enableShutdownHooks();
 
     await app.listen(4000);
 

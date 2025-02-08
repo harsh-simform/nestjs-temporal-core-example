@@ -33,6 +33,13 @@ import { AuthService } from "./auth.service";
         taskQueue: config.get<string>("TEMPORAL_TASK_QUEUE") || "",
         workflowsPath: require.resolve("./workflows/token-validation.workflow"),
         activityClasses: [TokenValidationActivity],
+        runtimeOptions: {
+          telemetryOptions: {
+            logging: {
+              console: {},
+            },
+          },
+        },
       }),
     }),
 

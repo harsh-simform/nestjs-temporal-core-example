@@ -18,7 +18,7 @@
     "@temporalio/client": "^1.8.0",
     "@temporalio/worker": "^1.8.0",
     "@temporalio/workflow": "^1.8.0",
-    "nestjs-temporal-core": "^2.0.0",
+    "nestjs-temporal-core": "file:.yalc/nestjs-temporal-core",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1"
   },

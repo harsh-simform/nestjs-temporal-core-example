@@ -9,5 +9,6 @@ export interface IAuthResponse {
 }
 
 export interface ITokenValidationActivity {
-  validateToken(token: string): Promise<IAuthResponse>;
+  validateToken1(token: string): Promise<IAuthResponse>;
+  validateToken2(token: string): Promise<IAuthResponse>;
 }

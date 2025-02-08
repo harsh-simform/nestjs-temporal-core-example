@@ -14,18 +14,35 @@ export class AuthService {
 
   async validateToken(): Promise<IAuthResponse> {
     try {
-      const { result, workflowId, handle } =
-        await this.temporalClient.startWorkflow<IAuthResponse, [string]>(
-          "validateTokenWorkflow",
-          ["hello"],
-          {
-            taskQueue:
-              this.configService.get<string>("TEMPORAL_TASK_QUEUE") || "",
-          }
-        );
-      this.logger.debug("Started workflow", { workflowId });
+      const {
+        handle: handle1,
+        result: result1,
+        workflowId: workflowId1,
+      } = await this.temporalClient.startWorkflow<IAuthResponse, [string]>(
+        "validateTokenWorkflow1",
+        ["hello"],
+        {
+          taskQueue:
+            this.configService.get<string>("TEMPORAL_TASK_QUEUE") || "",
+        }
+      );
+      console.log("🚀 ~ AuthService ~ validateToken ~ result1:", await result1);
 
-      return await result;
+      const {
+        handle: handle2,
+        result: result2,
+        workflowId: workflowId2,
+      } = await this.temporalClient.startWorkflow<IAuthResponse, [string]>(
+        "validateTokenWorkflow2",
+        ["hello"],
+        {
+          taskQueue:
+            this.configService.get<string>("TEMPORAL_TASK_QUEUE") || "",
+        }
+      );
+      console.log("🚀 ~ AuthService ~ validateToken ~ result2:", await result2);
+
+      return await result1;
     } catch (error) {
       this.logger.error("Error validating token:", error);
       throw error;

@@ -1,0 +1,63 @@
+{
+  "name": "nestjs-temporal-core",
+  "version": "2.0.0",
+  "description": "NestJS integration for Temporal.io with worker and client support",
+  "author": "Harsh M",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harsh-simform/nestjs-temporal-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/harsh-simform/nestjs-temporal-core/issues"
+  },
+  "homepage": "https://github.com/harsh-simform/nestjs-temporal-core#readme",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc -p tsconfig.json",
+    "format": "prettier --write \"src/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "test": "jest",
+    "update:packages": "npx npm-check-updates -u",
+    "prepublishOnly": "npm run build && npm run lint",
+    "preversion": "npm run lint",
+    "version": "npm run format && git add -A src",
+    "postversion": "git push && git push --tags",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "publish:major": "npm version major && npm publish",
+    "publish:minor": "npm version minor && npm publish",
+    "publish:patch": "npm version patch && npm publish",
+    "publish:beta": "npm version prerelease --preid=beta --no-git-tag-version && npm publish --tag beta",
+    "publish:alpha": "npm version prerelease --preid=alpha --no-git-tag-version && npm publish --tag alpha"
+  },
+  "keywords": [
+    "nestjs",
+    "temporal",
+    "workflow",
+    "microservices"
+  ],
+  "dependencies": {
+    "@nestjs/config": "^4.0.0",
+    "@nestjs/platform-express": "^11.0.8"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^9.0.0",
+    "@nestjs/core": "^9.0.0",
+    "@temporalio/client": "^1.8.0",
+    "@temporalio/worker": "^1.8.0",
+    "@temporalio/workflow": "^1.8.0",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "yalcSig": "7c5d6ccae7cefeae767cac66b92a3ea1"
+}
