@@ -84,22 +84,6 @@ export class AdminService {
     }
   }
 
-  async listWorkflows() {
-    const availableWorkflows = this.temporal.getAvailableWorkflows();
-    const discoveryStats = this.temporal.getDiscoveryStats();
-
-    return {
-      workflows: availableWorkflows.map((name) => {
-        const info = this.temporal.getWorkflowInfo(name);
-        return {
-          name,
-          ...info,
-        };
-      }),
-      stats: discoveryStats,
-    };
-  }
-
   async getDiscoveryStats() {
     const stats = this.temporal.getDiscoveryStats();
     const scheduleStats = this.temporal.getScheduleStats();
@@ -107,8 +91,37 @@ export class AdminService {
     return {
       discovery: stats,
       schedules: scheduleStats,
-      workflows: this.temporal.getAvailableWorkflows(),
       managedSchedules: this.temporal.getManagedSchedules(),
+      activities: {
+        // Could add activity information here if needed
+        message:
+          "Activities are discovered automatically from @Activity decorated classes",
+      },
+    };
+  }
+
+  async getWorkerInfo() {
+    const workerManager = this.temporal.getWorkerManager();
+
+    if (!workerManager) {
+      return {
+        available: false,
+        message: "Worker not available in client-only mode",
+      };
+    }
+
+    const status = workerManager.getWorkerStatus();
+    const activities = workerManager.getRegisteredActivities();
+    const health = await workerManager.healthCheck();
+
+    return {
+      available: true,
+      status,
+      activities: {
+        total: activities.length,
+        list: activities,
+      },
+      health,
     };
   }
 }

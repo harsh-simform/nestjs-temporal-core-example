@@ -2,9 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TemporalModule } from "nestjs-temporal-core";
 
-// Import our workflow controllers and activities
-import { OrderWorkflowController } from "./workflows/order.workflow";
-import { ReportWorkflowController } from "./workflows/report.workflow";
+// Import our activities
 import { EmailActivities } from "./activities/email.activities";
 import { PaymentActivities } from "./activities/payment.activities";
 import { InventoryActivities } from "./activities/inventory.activities";
@@ -14,6 +12,7 @@ import { OrderController } from "./controllers/order.controller";
 import { AdminController } from "./controllers/admin.controller";
 import { OrderService } from "./services/order.service";
 import { AdminService } from "./services/admin.service";
+import { ReportService } from "./services/report.service";
 
 @Module({
   imports: [
@@ -27,31 +26,33 @@ import { AdminService } from "./services/admin.service";
     TemporalModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        const crt = Buffer.from(
-          configService.get("TEMPORAL_TLS_CERT"),
-          "base64"
-        );
-        const key = Buffer.from(
-          configService.get("TEMPORAL_TLS_KEY"),
-          "base64"
-        );
+        // Only configure TLS if certificates are provided
+        const tlsCert = configService.get("TEMPORAL_TLS_CERT");
+        const tlsKey = configService.get("TEMPORAL_TLS_KEY");
+
+        let tlsConfig = undefined;
+        if (tlsCert && tlsKey) {
+          const crt = Buffer.from(tlsCert, "base64");
+          const key = Buffer.from(tlsKey, "base64");
+          tlsConfig = {
+            clientCertPair: { crt, key },
+          };
+        }
+
         return {
           connection: {
             address: configService.get("TEMPORAL_ADDRESS", "localhost:7233"),
             namespace: configService.get("TEMPORAL_NAMESPACE", "default"),
-            tls: {
-              clientCertPair: {
-                crt,
-                key,
-              },
-            },
+            ...(tlsConfig && { tls: tlsConfig }),
           },
           taskQueue: configService.get(
             "TEMPORAL_TASK_QUEUE",
             "order-processing"
           ),
           worker: {
+            // Path to compiled workflow files
             workflowsPath: require.resolve("./workflows"),
+            // Activity classes that will be auto-discovered
             activityClasses: [
               EmailActivities,
               PaymentActivities,
@@ -64,23 +65,22 @@ import { AdminService } from "./services/admin.service";
     }),
   ],
   controllers: [
-    // REST API controllers
+    // REST API controllers only
     OrderController,
     AdminController,
-
-    // Temporal workflow controllers (auto-discovered)
-    OrderWorkflowController,
-    ReportWorkflowController,
   ],
   providers: [
-    // Activity classes (auto-discovered)
+    // Activity classes (auto-discovered by Temporal worker)
     EmailActivities,
     PaymentActivities,
     InventoryActivities,
 
-    // Regular services
+    // Regular NestJS services
     OrderService,
     AdminService,
+
+    // Service with scheduled methods (auto-discovered)
+    ReportService,
   ],
 })
 export class AppModule {}

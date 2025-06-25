@@ -51,4 +51,10 @@ export class OrderController {
   async listOrders(@Query("customer") customerId?: string) {
     return this.orderService.listOrders(customerId);
   }
+
+  @Get("history/:customerId")
+  @ApiOperation({ summary: "Get order history for a customer" })
+  async getOrderHistory(@Param("customerId") customerId: string) {
+    return this.orderService.getOrderHistory(customerId);
+  }
 }

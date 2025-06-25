@@ -1,14 +1,13 @@
 import {
-  WorkflowController,
-  WorkflowMethod,
-  Signal,
-  Query,
-} from "nestjs-temporal-core";
-import { proxyActivities, sleep } from "@temporalio/workflow";
-import { EmailActivities } from "../activities/email.activities";
-import { PaymentActivities } from "../activities/payment.activities";
-import { InventoryActivities } from "../activities/inventory.activities";
-import { Controller } from "@nestjs/common";
+  proxyActivities,
+  sleep,
+  defineSignal,
+  defineQuery,
+  setHandler,
+} from "@temporalio/workflow";
+import type { EmailActivities } from "../activities/email.activities";
+import type { PaymentActivities } from "../activities/payment.activities";
+import type { InventoryActivities } from "../activities/inventory.activities";
 
 // Create activity proxies for use in workflows
 const emailActivities = proxyActivities<EmailActivities>({
@@ -34,111 +33,44 @@ interface OrderData {
   customerEmail: string;
 }
 
-@Controller()
-@WorkflowController({ taskQueue: "order-processing" })
-export class OrderWorkflowController {
-  private status = "processing";
-  private currentStep = "validation";
-  private paymentId?: string;
-  private shippingId?: string;
-  private error?: string;
+// Define signals and queries
+export const cancelOrderSignal = defineSignal<[string]>("cancelOrder");
+export const updateShippingSignal = defineSignal<[any]>("updateShipping");
+export const getOrderStatusQuery = defineQuery<any>("getOrderStatus");
+export const getProgressQuery = defineQuery<number>("getProgress");
 
-  @WorkflowMethod()
-  async processOrder(orderData: OrderData): Promise<string> {
-    try {
-      this.status = "processing";
-      this.currentStep = "validation";
+// Workflow state
+let status = "processing";
+let currentStep = "validation";
+let paymentId: string | undefined;
+let shippingId: string | undefined;
+let error: string | undefined;
 
-      // Step 1: Validate order
-      await this.validateOrder(orderData);
-
-      // Step 2: Reserve inventory
-      this.currentStep = "inventory_reservation";
-      const reservationId = await inventoryActivities.reserveInventory(
-        orderData.orderId,
-        orderData.items
-      );
-
-      // Step 3: Process payment
-      this.currentStep = "payment_processing";
-      this.paymentId = await paymentActivities.processPayment(
-        orderData.orderId,
-        orderData.customerId,
-        orderData.totalAmount
-      );
-
-      // Step 4: Confirm inventory
-      this.currentStep = "inventory_confirmation";
-      await inventoryActivities.confirmReservation(reservationId);
-
-      // Step 5: Send confirmation email
-      this.currentStep = "email_notification";
-      await emailActivities.sendOrderConfirmation(
-        orderData.customerEmail,
-        orderData.orderId,
-        this.paymentId
-      );
-
-      // Step 6: Schedule shipping (with delay to simulate processing time)
-      this.currentStep = "shipping_preparation";
-      await sleep("30s"); // Simulate processing time
-
-      this.shippingId = await this.scheduleShipping(orderData);
-
-      // Step 7: Send shipping notification
-      this.currentStep = "shipping_notification";
-      await emailActivities.sendShippingNotification(
-        orderData.customerEmail,
-        orderData.orderId,
-        this.shippingId!
-      );
-
-      this.status = "completed";
-      this.currentStep = "completed";
-      return this.status;
-    } catch (error) {
-      this.status = "failed";
-      this.error = error.message;
-
-      // Compensation logic
-      await this.compensateOrder(orderData);
-      throw error;
-    }
-  }
-
-  @Signal("cancelOrder")
-  async cancelOrder(reason: string): Promise<void> {
-    if (this.status === "completed") {
+export async function processOrder(orderData: OrderData): Promise<string> {
+  // Set up signal and query handlers
+  setHandler(cancelOrderSignal, async (reason: string) => {
+    if (status === "completed") {
       throw new Error("Cannot cancel completed order");
     }
 
-    this.status = "cancelled";
-    this.error = `Cancelled: ${reason}`;
+    status = "cancelled";
+    error = `Cancelled: ${reason}`;
+  });
 
-    // Send cancellation email
-    // Note: In a real implementation, you'd need to pass customer email via signal
-    // or store it in workflow state
-  }
-
-  @Signal("updateShipping")
-  async updateShippingAddress(newAddress: any): Promise<void> {
-    // Update shipping address logic
+  setHandler(updateShippingSignal, async (newAddress: any) => {
     console.log("Updating shipping address:", newAddress);
-  }
+    // Update shipping address logic
+  });
 
-  @Query("getOrderStatus")
-  getOrderStatus(): any {
-    return {
-      status: this.status,
-      currentStep: this.currentStep,
-      paymentId: this.paymentId,
-      shippingId: this.shippingId,
-      error: this.error,
-    };
-  }
+  setHandler(getOrderStatusQuery, () => ({
+    status,
+    currentStep,
+    paymentId,
+    shippingId,
+    error,
+  }));
 
-  @Query("getProgress")
-  getProgress(): number {
+  setHandler(getProgressQuery, () => {
     const steps = [
       "validation",
       "inventory_reservation",
@@ -150,36 +82,96 @@ export class OrderWorkflowController {
       "completed",
     ];
 
-    const currentIndex = steps.indexOf(this.currentStep);
+    const currentIndex = steps.indexOf(currentStep);
     return Math.round((currentIndex / (steps.length - 1)) * 100);
+  });
+
+  try {
+    status = "processing";
+    currentStep = "validation";
+
+    // Step 1: Validate order
+    await validateOrder(orderData);
+
+    // Step 2: Reserve inventory
+    currentStep = "inventory_reservation";
+    const reservationId = await inventoryActivities.reserveInventory(
+      orderData.orderId,
+      orderData.items
+    );
+
+    // Step 3: Process payment
+    currentStep = "payment_processing";
+    paymentId = await paymentActivities.processPayment(
+      orderData.orderId,
+      orderData.customerId,
+      orderData.totalAmount
+    );
+
+    // Step 4: Confirm inventory
+    currentStep = "inventory_confirmation";
+    await inventoryActivities.confirmReservation(reservationId);
+
+    // Step 5: Send confirmation email
+    currentStep = "email_notification";
+    await emailActivities.sendOrderConfirmation(
+      orderData.customerEmail,
+      orderData.orderId,
+      paymentId
+    );
+
+    // Step 6: Schedule shipping (with delay to simulate processing time)
+    currentStep = "shipping_preparation";
+    await sleep("30s"); // Simulate processing time
+
+    shippingId = await scheduleShipping(orderData);
+
+    // Step 7: Send shipping notification
+    currentStep = "shipping_notification";
+    await emailActivities.sendShippingNotification(
+      orderData.customerEmail,
+      orderData.orderId,
+      shippingId!
+    );
+
+    status = "completed";
+    currentStep = "completed";
+    return status;
+  } catch (workflowError) {
+    status = "failed";
+    error = workflowError.message;
+
+    // Compensation logic
+    await compensateOrder(orderData);
+    throw workflowError;
+  }
+}
+
+async function validateOrder(orderData: OrderData): Promise<void> {
+  // Basic validation
+  if (!orderData.orderId || !orderData.customerId) {
+    throw new Error("Invalid order data");
   }
 
-  private async validateOrder(orderData: OrderData): Promise<void> {
-    // Basic validation
-    if (!orderData.orderId || !orderData.customerId) {
-      throw new Error("Invalid order data");
+  if (orderData.items.length === 0) {
+    throw new Error("Order must contain at least one item");
+  }
+}
+
+async function scheduleShipping(orderData: OrderData): Promise<string> {
+  // Simulate shipping service call
+  return `SHIP-${orderData.orderId}-${Date.now()}`;
+}
+
+async function compensateOrder(orderData: OrderData): Promise<void> {
+  // Compensation logic for failed orders
+  if (paymentId) {
+    try {
+      await paymentActivities.refundPayment(paymentId);
+    } catch (refundError) {
+      console.error("Failed to refund payment:", refundError);
     }
-
-    if (orderData.items.length === 0) {
-      throw new Error("Order must contain at least one item");
-    }
   }
 
-  private async scheduleShipping(orderData: OrderData): Promise<string> {
-    // Simulate shipping service call
-    return `SHIP-${orderData.orderId}-${Date.now()}`;
-  }
-
-  private async compensateOrder(orderData: OrderData): Promise<void> {
-    // Compensation logic for failed orders
-    if (this.paymentId) {
-      try {
-        await paymentActivities.refundPayment(this.paymentId);
-      } catch (error) {
-        console.error("Failed to refund payment:", error);
-      }
-    }
-
-    // Release inventory reservations, send failure notifications, etc.
-  }
+  // Release inventory reservations, send failure notifications, etc.
 }

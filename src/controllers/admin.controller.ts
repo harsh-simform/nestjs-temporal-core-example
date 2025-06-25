@@ -43,10 +43,10 @@ export class AdminController {
     return this.adminService.resumeSchedule(scheduleId, body.note);
   }
 
-  @Get("workflows")
-  @ApiOperation({ summary: "List available workflows" })
-  async listWorkflows() {
-    return this.adminService.listWorkflows();
+  @Get("worker")
+  @ApiOperation({ summary: "Get worker information and status" })
+  async getWorkerInfo() {
+    return this.adminService.getWorkerInfo();
   }
 
   @Get("discovery/stats")

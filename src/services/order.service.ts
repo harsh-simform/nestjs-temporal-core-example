@@ -16,9 +16,9 @@ export class OrderService {
       createdAt: new Date().toISOString(),
     };
 
-    // Start the order processing workflow
+    // Start the order processing workflow directly
     const { workflowId, result } = await this.temporal.startWorkflow(
-      "processOrder",
+      "processOrder", // This corresponds to the workflow function name in order.workflow.ts
       [enhancedOrderData],
       {
         taskQueue: "order-processing",
@@ -54,6 +54,7 @@ export class OrderService {
       return {
         orderId,
         workflowId,
+        status,
         progress,
       };
     } catch (error) {
@@ -128,6 +129,50 @@ export class OrderService {
           createdAt: new Date(Date.now() - 3600000).toISOString(),
         },
       ],
+    };
+  }
+
+  async getOrderHistory(customerId: string) {
+    // This could use Temporal's list workflows API to get real order history
+    try {
+      const workflowClient = this.temporal.getClient().getWorkflowClient();
+
+      if (workflowClient) {
+        // Example of how you could list workflows for a customer
+        const workflows = workflowClient.list({
+          query: `WorkflowType = "processOrder" AND SearchAttributes["customer-id"] = "${customerId}"`,
+          pageSize: 50,
+        });
+
+        const orderHistory = [];
+        for await (const workflow of workflows) {
+          orderHistory.push({
+            workflowId: workflow.workflowId,
+            status: workflow.status,
+            startTime: workflow.startTime,
+            // You could query each workflow for more details if needed
+          });
+        }
+
+        return {
+          customerId,
+          orders: orderHistory,
+          total: orderHistory.length,
+        };
+      }
+    } catch (error) {
+      console.warn(
+        "Failed to fetch order history from Temporal:",
+        error.message
+      );
+    }
+
+    // Fallback to mock data
+    return {
+      customerId,
+      orders: this.listOrders(customerId),
+      total: 2,
+      note: "Using mock data - enable Temporal client for real order history",
     };
   }
 }
