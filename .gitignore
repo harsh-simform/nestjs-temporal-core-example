@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+.env
+*.log
+coverage/
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.swp
+.yalc
+yalc.lock
