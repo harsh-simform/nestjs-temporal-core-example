@@ -6,9 +6,7 @@
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "build": "nest build",
-    "test": "jest",
-    "temporal:worker": "npm run start:dev",
-    "temporal:dev": "temporal server start-dev"
+    "test": "jest"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

@@ -19,19 +19,13 @@ A comprehensive example demonstrating the capabilities of the `nestjs-temporal-c
    npm install
    ```
 
-2. **Start Temporal Development Server**
-
-   ```bash
-   npm run temporal:dev
-   ```
-
-3. **Start the Application**
+2. **Start the Application**
 
    ```bash
    npm run start:dev
    ```
 
-4. **View API Documentation**
+3. **View API Documentation**
    Open http://localhost:3000/api
 
 ## Testing the Application
@@ -101,7 +95,6 @@ src/
 
 All workflows and activities are automatically discovered using decorators:
 
-- `@WorkflowController()` for workflow classes
 - `@Activity()` for activity classes
 - `@Cron()` and `@Interval()` for scheduled workflows
 
