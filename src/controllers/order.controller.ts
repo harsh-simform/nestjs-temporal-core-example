@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { OrderService } from "../services/order.service";
+import { CreateOrderDto, CancelOrderDto, UpdateShippingDto } from "../dto/order.dto";
 
 @ApiTags("orders")
 @Controller("orders")
@@ -18,7 +19,8 @@ export class OrderController {
   @Post()
   @ApiOperation({ summary: "Create a new order" })
   @ApiResponse({ status: 201, description: "Order created successfully" })
-  async createOrder(@Body() orderData: any) {
+  @ApiResponse({ status: 400, description: "Invalid order data" })
+  async createOrder(@Body() orderData: CreateOrderDto) {
     return this.orderService.createOrder(orderData);
   }
 
@@ -30,18 +32,22 @@ export class OrderController {
 
   @Patch(":orderId/cancel")
   @ApiOperation({ summary: "Cancel an order" })
+  @ApiResponse({ status: 200, description: "Order cancellation requested" })
+  @ApiResponse({ status: 404, description: "Order not found" })
   async cancelOrder(
     @Param("orderId") orderId: string,
-    @Body() body: { reason: string }
+    @Body() body: CancelOrderDto
   ) {
     return this.orderService.cancelOrder(orderId, body.reason);
   }
 
   @Patch(":orderId/shipping")
   @ApiOperation({ summary: "Update shipping address" })
+  @ApiResponse({ status: 200, description: "Shipping address updated" })
+  @ApiResponse({ status: 404, description: "Order not found" })
   async updateShipping(
     @Param("orderId") orderId: string,
-    @Body() address: any
+    @Body() address: UpdateShippingDto
   ) {
     return this.orderService.updateShippingAddress(orderId, address);
   }

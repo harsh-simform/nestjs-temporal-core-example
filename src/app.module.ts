@@ -9,10 +9,7 @@ import { InventoryActivities } from "./activities/inventory.activities";
 
 // Import our REST controllers and services
 import { OrderController } from "./controllers/order.controller";
-import { AdminController } from "./controllers/admin.controller";
 import { OrderService } from "./services/order.service";
-import { AdminService } from "./services/admin.service";
-import { ReportService } from "./services/report.service";
 
 @Module({
   imports: [
@@ -67,7 +64,6 @@ import { ReportService } from "./services/report.service";
   controllers: [
     // REST API controllers only
     OrderController,
-    AdminController,
   ],
   providers: [
     // Activity classes (auto-discovered by Temporal worker)
@@ -77,10 +73,6 @@ import { ReportService } from "./services/report.service";
 
     // Regular NestJS services
     OrderService,
-    AdminService,
-
-    // Service with scheduled methods (auto-discovered)
-    ReportService,
   ],
 })
 export class AppModule {}

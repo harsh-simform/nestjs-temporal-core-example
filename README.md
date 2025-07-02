@@ -1,37 +1,51 @@
-# NestJS Temporal Example Application
+# NestJS Temporal Core Example
 
-A comprehensive example demonstrating the capabilities of the `nestjs-temporal-core` package.
+A clean, simple example demonstrating the `nestjs-temporal-core` package with a complete order management workflow.
 
-## Features Demonstrated
+## Features
 
-- **Order Processing Workflow**: Complete order lifecycle with payment, inventory, and notifications
-- **Scheduled Reports**: Automated daily/monthly reports using cron expressions
-- **System Monitoring**: Health checks with interval-based scheduling
-- **REST API Integration**: Standard NestJS controllers that interact with Temporal workflows
-- **Error Handling**: Compensation logic and retry strategies
-- **Signals & Queries**: Real-time workflow communication
+- **Order Processing Workflow**: Complete order lifecycle with payment processing, inventory management, and email notifications
+- **REST API Integration**: Standard NestJS controllers with Swagger documentation
+- **Error Handling**: Retry strategies and compensation logic for failed workflows
+- **Real-time Communication**: Workflow signals and queries for order status updates
+- **Type Safety**: Full TypeScript support with proper DTOs and validation
+
+## Prerequisites
+
+- Node.js 18+ 
+- [Temporal Server](https://docs.temporal.io/self-hosted-guide/setup) running locally (or Temporal Cloud account)
 
 ## Quick Start
 
-1. **Install Dependencies**
-
+1. **Clone and Install**
    ```bash
+   git clone <repository-url>
+   cd nestjs-temporal-core-example
    npm install
    ```
 
-2. **Start the Application**
+2. **Start Temporal Server** (if running locally)
+   ```bash
+   temporal server start-dev
+   ```
 
+3. **Configure Environment**
+   ```bash
+   cp .env.example .env
+   # Edit .env if needed (defaults work for local Temporal server)
+   ```
+
+4. **Start the Application**
    ```bash
    npm run start:dev
    ```
 
-3. **View API Documentation**
+5. **View API Documentation**
    Open http://localhost:3000/api
 
-## Testing the Application
+## API Usage Examples
 
 ### Create an Order
-
 ```bash
 curl -X POST http://localhost:3000/orders \
   -H "Content-Type: application/json" \
@@ -46,75 +60,76 @@ curl -X POST http://localhost:3000/orders \
 ```
 
 ### Check Order Status
-
 ```bash
-curl http://localhost:3000/orders/ORDER-xxx/status
+curl http://localhost:3000/orders/ORDER-{timestamp}/status
 ```
 
 ### Cancel an Order
-
 ```bash
-curl -X PATCH http://localhost:3000/orders/ORDER-xxx/cancel \
+curl -X PATCH http://localhost:3000/orders/ORDER-{timestamp}/cancel \
   -H "Content-Type: application/json" \
   -d '{"reason": "Customer requested cancellation"}'
 ```
 
-### Admin Operations
-
+### Update Shipping Address
 ```bash
-# Get system status
-curl http://localhost:3000/admin/system/status
-
-# List schedules
-curl http://localhost:3000/admin/schedules
-
-# Trigger a schedule manually
-curl -X POST http://localhost:3000/admin/schedules/daily-order-report/trigger
-
-# Pause a schedule
-curl -X PATCH http://localhost:3000/admin/schedules/daily-order-report/pause \
+curl -X PATCH http://localhost:3000/orders/ORDER-{timestamp}/shipping \
   -H "Content-Type: application/json" \
-  -d '{"note": "Maintenance period"}'
+  -d '{
+    "street": "456 New St",
+    "city": "Boston",
+    "state": "MA", 
+    "zipCode": "02101",
+    "country": "USA"
+  }'
 ```
 
 ## Project Structure
 
 ```
 src/
-├── workflows/           # Temporal workflow controllers
-├── activities/          # Temporal activity implementations
+├── activities/          # Temporal activities (payment, inventory, email)
+├── workflows/           # Temporal workflows (order processing)
 ├── controllers/         # REST API controllers
 ├── services/           # Business logic services
+├── dto/                # Data transfer objects
 ├── app.module.ts       # Main application module
 └── main.ts            # Application bootstrap
 ```
 
-## Key Features
+## How It Works
 
-### Auto-Discovery
+1. **Order Creation**: POST to `/orders` starts a Temporal workflow
+2. **Workflow Steps**: 
+   - Validate order data
+   - Reserve inventory 
+   - Process payment
+   - Confirm inventory reservation
+   - Send confirmation email
+   - Schedule shipping
+   - Send shipping notification
+3. **Real-time Updates**: Use queries to check status and signals to cancel/modify orders
+4. **Error Handling**: Failed steps trigger compensation (refunds, inventory release)
 
-All workflows and activities are automatically discovered using decorators:
+## Temporal Integration
 
-- `@Activity()` for activity classes
-- `@Cron()` and `@Interval()` for scheduled workflows
+The example showcases key `nestjs-temporal-core` features:
+- **Auto-discovery**: Activities are automatically registered using `@Activity()` decorator
+- **Dependency Injection**: Activities can inject NestJS services
+- **Type Safety**: Full TypeScript support for workflows and activities
+- **Configuration**: Environment-based Temporal client configuration
 
-### Comprehensive Error Handling
+## Development
 
-- Automatic retries with configurable policies
-- Compensation logic for failed workflows
-- Graceful degradation for service failures
+```bash
+# Development server with hot reload
+npm run start:dev
 
-### Monitoring & Health Checks
+# Build for production
+npm run build
 
-- System status endpoints
-- Schedule management APIs
-- Discovery statistics and metrics
+# Start production server
+npm start
+```
 
-### Production Ready
-
-- Proper logging and error handling
-- Environment-based configuration
-- Swagger API documentation
-- Health check endpoints
-
-This example demonstrates real-world usage patterns and best practices for building reliable distributed systems with NestJS and Temporal.
+This example provides a solid foundation for building production-ready applications with NestJS and Temporal.

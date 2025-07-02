@@ -1,12 +1,16 @@
 {
-  "name": "nestjs-temporal-example",
+  "name": "nestjs-temporal-core-example",
   "version": "1.0.0",
+  "description": "A comprehensive example application demonstrating nestjs-temporal-core package with order management workflow",
+  "main": "dist/main.js",
   "scripts": {
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "build": "nest build",
-    "test": "jest"
+    "test": "jest",
+    "lint": "eslint \"src/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\""
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
