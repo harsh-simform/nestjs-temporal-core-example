@@ -57,7 +57,8 @@ import { OrderService } from "./services/order.service";
             ],
             autoStart: true, // Automatically start the worker
           },
-          enableLogger: false,
+          logLevel: "info",
+          enableLogger: true,
         };
       },
       inject: [ConfigService],

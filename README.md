@@ -4,140 +4,100 @@ A comprehensive example demonstrating the `nestjs-temporal-core` package with a 
 
 ## ✨ Features
 
-- **🔄 Complete Order Processing Workflow**: End-to-end order lifecycle with payment processing, inventory management, and email notifications
-- **🌐 REST API Integration**: Full CRUD operations with Swagger/OpenAPI documentation
-- **⚡ Real-time Communication**: Workflow signals and queries for dynamic order updates
-- **🛡️ Error Handling**: Comprehensive retry strategies and compensation logic for failed workflows
-- **🔒 Type Safety**: Full TypeScript support with proper DTOs and validation
-- **🎯 Production Ready**: Environment configuration, Docker support, and testing utilities
-- **📊 Realistic Simulations**: Fake data generation with proper error scenarios for testing
+- **End-to-end Order Workflow**: Payment, inventory, and email steps with compensation logic
+- **REST API**: Create, track, cancel, and update orders
+- **Real-time Progress**: Query workflow status and progress
+- **Error Handling**: Retries and compensation for failures
+- **Docker & Temporal**: One-command setup for local development
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
+## 🚀 Quick Demo Walkthrough
 
-- Node.js 18+
-- [Temporal Server](https://docs.temporal.io/self-hosted-guide/setup) running locally (or Temporal Cloud account)
-
-### Installation & Setup
-
-1. **Clone and Install**
-
-   ```bash
-   git clone <repository-url>
-   cd nestjs-temporal-core-example
-   npm install
-   ```
-
-2. **Start Temporal Server**
-
-   **Option A: Using Docker (Recommended)**
-
-   ```bash
-   npm run temporal:up
-   ```
-
-   **Option B: Local Installation**
-
-   ```bash
-   temporal server start-dev
-   ```
-
-3. **Configure Environment**
-
-   ```bash
-   cp .env.example .env
-   # Edit .env if needed (configured for Temporal Cloud by default)
-   ```
-
-4. **Start the Application**
-
-   ```bash
-   npm run start:dev
-   ```
-
-5. **Test the Application**
-
-   ```bash
-   # Run automated order test
-   npm run test:order
-
-   # Or view API documentation at http://localhost:3232/api
-   # Application runs on port 3232 by default
-   ```
-
-## 🐳 Docker Setup
-
-The project includes a complete docker-compose.yml for easy Temporal development:
+### 1. Start Temporal and the App
 
 ```bash
-# Start all Temporal services (server + web UI)
-npm run temporal:up
-
-# View Temporal Web UI at http://localhost:8088
-# View server logs
-npm run temporal:logs
-
-# Stop all services
-npm run temporal:down
+npm install
+npm run temporal:up         # Start Temporal server (Docker)
+npm run start:dev           # Start NestJS app (port 3232)
 ```
 
-## 📡 API Usage Examples
+- Temporal Web UI: http://localhost:8088
+- API Docs (Swagger): http://localhost:3232/api
 
-### Create a Demo Order (Recommended for Testing)
+### 2. Create a Demo Order
 
 ```bash
 curl -X POST http://localhost:3232/orders/demo
 ```
 
-### Create a Custom Order
+- This triggers the full order workflow with fake data.
 
-```bash
-curl -X POST http://localhost:3232/orders \
-  -H "Content-Type: application/json" \
-  -d '{
-    "customerId": "CUSTOMER-123",
-    "customerEmail": "customer@example.com",
-    "items": [
-      {"productId": "PROD-001", "quantity": 2, "price": 29.99}
-    ],
-    "totalAmount": 59.98
-  }'
-```
-
-### Check Order Status & Progress
+### 3. Check Order Status
 
 ```bash
 curl http://localhost:3232/orders/ORDER-{timestamp}/status
 ```
 
-### Cancel an Order
+- Replace `{timestamp}` with the orderId from the previous response.
+
+### 4. Cancel or Update Shipping (Optional)
 
 ```bash
 curl -X PATCH http://localhost:3232/orders/ORDER-{timestamp}/cancel \
   -H "Content-Type: application/json" \
   -d '{"reason": "Customer requested cancellation"}'
-```
 
-### Update Shipping Address
-
-```bash
 curl -X PATCH http://localhost:3232/orders/ORDER-{timestamp}/shipping \
   -H "Content-Type: application/json" \
-  -d '{
-    "street": "456 New St",
-    "city": "Boston",
-    "state": "MA",
-    "zipCode": "02101",
-    "country": "USA"
-  }'
+  -d '{"street": "123 Main St", "city": "Boston", ...}'
 ```
 
-### Get Demo Product Catalog
+---
+
+## 🔄 Order Workflow Steps
+
+1. **Validation**: Validate order data
+2. **Inventory Reservation**: Reserve products
+3. **Payment Processing**: Process payment (with retries)
+4. **Inventory Confirmation**: Confirm allocation
+5. **Email Notification**: Send confirmation email
+6. **Shipping Preparation**: Simulate shipping (30s delay)
+7. **Shipping Notification**: Send shipping email
+8. **Completion**: Mark order as complete
+
+- **Compensation**: Refunds and inventory release on failure
+- **Signals/Queries**: Cancel, update shipping, and track progress in real time
+
+---
+
+## 🐳 Docker/Temporal Setup
+
+The project includes a `docker-compose.yml` for easy Temporal development:
 
 ```bash
-curl http://localhost:3232/orders/demo/products
+npm run temporal:up      # Start Temporal server and web UI
+npm run temporal:logs    # View Temporal server logs
+npm run temporal:down    # Stop Temporal services
 ```
+
+- Web UI: http://localhost:8088
+- Temporal server: localhost:7233
+
+---
+
+## 📡 API Endpoints (Key Examples)
+
+| Endpoint                     | Method | Description                      |
+| ---------------------------- | ------ | -------------------------------- |
+| `/orders/demo`               | POST   | Create a demo order (quick test) |
+| `/orders`                    | POST   | Create a custom order            |
+| `/orders/{orderId}/status`   | GET    | Get order status & progress      |
+| `/orders/{orderId}/cancel`   | PATCH  | Cancel an order                  |
+| `/orders/{orderId}/shipping` | PATCH  | Update shipping address          |
+| `/orders/demo/products`      | GET    | Get demo product catalog         |
+
+---
 
 ## 🏗️ Project Structure
 
@@ -164,124 +124,44 @@ src/
 └── main.ts              # Application bootstrap
 ```
 
-## 🔄 How It Works
-
-### Order Processing Workflow
-
-1. **Order Creation**: POST to `/orders` or `/orders/demo` starts a Temporal workflow
-2. **Workflow Steps** (8 stages with progress tracking):
-
-   - ✅ **Validation**: Validate order data and customer information
-   - 📦 **Inventory Reservation**: Reserve products in inventory
-   - 💳 **Payment Processing**: Process payment with retry logic
-   - ✅ **Inventory Confirmation**: Confirm inventory allocation
-   - 📧 **Email Notification**: Send order confirmation email
-   - 🚚 **Shipping Preparation**: Schedule shipping (30s delay simulation)
-   - 📬 **Shipping Notification**: Send shipping confirmation with tracking
-   - 🎉 **Completion**: Order successfully processed
-
-3. **Real-time Features**:
-   - **Status Queries**: Track order progress (0-100%)
-   - **Cancellation Signals**: Cancel orders at any stage
-   - **Shipping Updates**: Update delivery address
-   - **Compensation**: Automatic refunds and inventory release on failures
-
-### Error Handling & Reliability
-
-- **Automatic Retries**: Configurable retry strategies for each activity
-- **Compensation Logic**: Refunds and inventory release for failed orders
-- **Realistic Failures**: Simulated payment failures, inventory issues, and email problems
-- **State Persistence**: Workflow state survives service restarts
-
-## 🎯 Temporal Integration Features
-
-This example demonstrates key `nestjs-temporal-core` capabilities:
-
-- **🔍 Auto-discovery**: Activities automatically registered using `@Activity()` decorator
-- **💉 Dependency Injection**: Activities can inject NestJS services and providers
-- **🔒 Type Safety**: Full TypeScript support for workflows and activities
-- **⚙️ Configuration**: Environment-based Temporal client configuration
-- **🔧 Workflow Management**: Start, query, and signal workflows programmatically
-- **📊 Monitoring**: Integration with Temporal Web UI for workflow monitoring
+---
 
 ## 🛠️ Development Scripts
 
 ```bash
-# Application
 npm run start:dev          # Development server with hot reload
-npm run start:debug        # Debug mode with inspector
 npm run build              # Build for production
 npm run start              # Start production server
-
-# Temporal Services
 npm run temporal:up        # Start Temporal with Docker
 npm run temporal:down      # Stop Temporal services
 npm run temporal:logs      # View Temporal server logs
-
-# Testing & Quality
 npm run test:order         # Run automated order workflow test
-npm run lint              # Lint TypeScript files
-npm run format            # Format code with Prettier
+npm run lint               # Lint TypeScript files
+npm run format             # Format code with Prettier
 ```
+
+---
 
 ## 🌍 Environment Configuration
 
-The application supports both local development and Temporal Cloud:
+- See `.env.example` for all options
+- By default, runs on port 3232 and connects to Temporal at `localhost:7233`
 
-### Local Development (.env.example)
-
-```env
-# Application
-PORT=3232
-NODE_ENV=development
-
-# Temporal (Local)
-TEMPORAL_ADDRESS=localhost:7233
-TEMPORAL_NAMESPACE=default
-TEMPORAL_TASK_QUEUE=order-processing
-```
-
-### Temporal Cloud
-
-```env
-# Application
-PORT=3232
-NODE_ENV=production
-
-# Temporal Cloud
-TEMPORAL_ADDRESS=your-namespace.your-account.tmprl.cloud:7233
-TEMPORAL_NAMESPACE=your-namespace.your-account
-TEMPORAL_TASK_QUEUE=order-processing
-TEMPORAL_TLS_CERT=your-base64-encoded-cert
-TEMPORAL_TLS_KEY=your-base64-encoded-key
-```
+---
 
 ## 🔍 Monitoring & Debugging
 
-- **Swagger UI**: http://localhost:3232/api - Complete API documentation
-- **Temporal Web UI**: http://localhost:8088 - Workflow execution monitoring
-- **Application Logs**: Structured logging for all workflow steps
-- **Workflow History**: Complete execution history in Temporal UI
+- **Swagger UI**: http://localhost:3232/api
+- **Temporal Web UI**: http://localhost:8088
+- **Application Logs**: See console for workflow step logs
+
+---
 
 ## 🎯 Key Learning Points
 
-This example demonstrates:
+- Temporal workflows, activities, signals, and queries
+- Clean NestJS integration and architecture
+- Error handling, compensation, and monitoring
+- Realistic order processing demo
 
-1. **Temporal Fundamentals**: Workflows, activities, signals, and queries
-2. **NestJS Integration**: Clean architecture with dependency injection
-3. **Production Patterns**: Error handling, compensation, and monitoring
-4. **Real-world Scenarios**: Order processing, payment handling, and inventory management
-5. **Testing Strategies**: Automated testing with realistic data
-
-## 🚀 Next Steps
-
-To extend this example:
-
-1. **Database Integration**: Add persistent storage for orders and customers
-2. **Real Integrations**: Connect to actual payment gateways and inventory systems
-3. **Advanced Features**: Implement workflow versioning and migration strategies
-4. **Monitoring**: Add metrics, alerting, and observability tools
-5. **Deployment**: Configure for production deployment with Docker and Kubernetes
-
-This implementation provides a solid foundation for building production-ready applications with NestJS and Temporal!
-This implementation provides a solid foundation for building production-ready applications with NestJS and Temporal!
+---
