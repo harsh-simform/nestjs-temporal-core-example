@@ -10,7 +10,11 @@
     "build": "nest build",
     "test": "jest",
     "lint": "eslint \"src/**/*.ts\" --fix",
-    "format": "prettier --write \"src/**/*.ts\""
+    "format": "prettier --write \"src/**/*.ts\"",
+    "temporal:up": "docker-compose up -d",
+    "temporal:down": "docker-compose down",
+    "temporal:logs": "docker-compose logs -f temporal",
+    "test:order": "./test-order.sh"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",
@@ -28,6 +32,7 @@
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@faker-js/faker": "^9.9.0",
     "@nestjs/cli": "^10.0.0",
     "@nestjs/schematics": "^10.0.0",
     "@nestjs/testing": "^10.0.0",

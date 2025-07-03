@@ -55,7 +55,9 @@ import { OrderService } from "./services/order.service";
               PaymentActivities,
               InventoryActivities,
             ],
+            autoStart: true, // Automatically start the worker
           },
+          enableLogger: false,
         };
       },
       inject: [ConfigService],

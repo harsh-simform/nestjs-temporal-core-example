@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { TemporalService } from "nestjs-temporal-core";
+import { FakeDataGenerator } from "../utils/fake-data";
 
 @Injectable()
 export class OrderService {
@@ -110,25 +111,18 @@ export class OrderService {
   }
 
   async listOrders(customerId?: string) {
-    // In a real application, you'd query a database or use Temporal's list API
-    // For demo purposes, return mock data
+    const fakeOrders = FakeDataGenerator.generateOrderHistory(10);
+    
     return {
-      orders: [
-        {
-          orderId: "ORDER-DEMO-001",
-          customerId: customerId || "CUSTOMER-001",
-          status: "completed",
-          totalAmount: 99.99,
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-        },
-        {
-          orderId: "ORDER-DEMO-002",
-          customerId: customerId || "CUSTOMER-001",
-          status: "processing",
-          totalAmount: 149.5,
-          createdAt: new Date(Date.now() - 3600000).toISOString(),
-        },
-      ],
+      orders: fakeOrders.map(order => ({
+        orderId: order.orderId,
+        customerId: customerId || order.customerId,
+        status: ["completed", "processing", "shipped", "pending"][Math.floor(Math.random() * 4)],
+        totalAmount: order.totalAmount,
+        createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+        items: order.items,
+        customerEmail: order.customerEmail
+      }))
     };
   }
 
@@ -167,12 +161,22 @@ export class OrderService {
       );
     }
 
-    // Fallback to mock data
+    // Fallback to realistic fake data
+    const fakeOrderHistory = FakeDataGenerator.generateOrderHistory(15);
+    const ordersWithStatus = fakeOrderHistory.map(order => ({
+      ...FakeDataGenerator.generateOrderWithStatus(),
+      customerId,
+      orderId: order.orderId,
+      items: order.items,
+      totalAmount: order.totalAmount,
+      customerEmail: order.customerEmail
+    }));
+
     return {
       customerId,
-      orders: this.listOrders(customerId),
-      total: 2,
-      note: "Using mock data - enable Temporal client for real order history",
+      orders: ordersWithStatus,
+      total: ordersWithStatus.length,
+      note: "Using realistic fake data - enable Temporal client for real order history",
     };
   }
 }

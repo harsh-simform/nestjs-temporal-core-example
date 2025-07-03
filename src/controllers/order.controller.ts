@@ -10,6 +10,7 @@ import {
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { OrderService } from "../services/order.service";
 import { CreateOrderDto, CancelOrderDto, UpdateShippingDto } from "../dto/order.dto";
+import { FakeDataGenerator } from "../utils/fake-data";
 
 @ApiTags("orders")
 @Controller("orders")
@@ -62,5 +63,22 @@ export class OrderController {
   @ApiOperation({ summary: "Get order history for a customer" })
   async getOrderHistory(@Param("customerId") customerId: string) {
     return this.orderService.getOrderHistory(customerId);
+  }
+
+  @Post("demo")
+  @ApiOperation({ summary: "Create a demo order with fake data" })
+  @ApiResponse({ status: 201, description: "Demo order created successfully" })
+  async createDemoOrder() {
+    const demoOrder = FakeDataGenerator.generateCreateOrderDto();
+    return this.orderService.createOrder(demoOrder);
+  }
+
+  @Get("demo/products")
+  @ApiOperation({ summary: "Get demo product catalog" })
+  async getDemoProducts() {
+    return {
+      products: FakeDataGenerator.generateEcommerceProducts(25),
+      message: "Demo product catalog with realistic fake data"
+    };
   }
 }
