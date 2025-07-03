@@ -1,11 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { Activity, ActivityMethod } from "nestjs-temporal-core";
+import type { InventoryItem } from "../interfaces";
 
-interface InventoryItem {
-  productId: string;
-  quantity: number;
-  price: number;
-}
 
 @Injectable()
 @Activity()

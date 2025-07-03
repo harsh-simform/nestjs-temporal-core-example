@@ -8,6 +8,7 @@ import {
 import type { EmailActivities } from "../activities/email.activities";
 import type { PaymentActivities } from "../activities/payment.activities";
 import type { InventoryActivities } from "../activities/inventory.activities";
+import type { OrderData } from "../interfaces";
 
 // Create activity proxies for use in workflows
 const emailActivities = proxyActivities<EmailActivities>({
@@ -25,13 +26,6 @@ const inventoryActivities = proxyActivities<InventoryActivities>({
   retry: { maximumAttempts: 3 },
 });
 
-interface OrderData {
-  orderId: string;
-  customerId: string;
-  items: Array<{ productId: string; quantity: number; price: number }>;
-  totalAmount: number;
-  customerEmail: string;
-}
 
 // Define signals and queries
 export const cancelOrderSignal = defineSignal<[string]>("cancelOrder");
