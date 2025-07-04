@@ -126,7 +126,59 @@ src/
 
 ---
 
-## 🛠️ Development Scripts
+## � Docker Compose Setup
+
+This project includes a complete Docker Compose setup for local Temporal development:
+
+```bash
+# Quick start with Docker
+docker-compose up -d        # Start all services
+cp .env.local .env          # Use local configuration
+npm run start:dev           # Start the application
+
+# Test the setup
+./test-docker-setup.sh      # Comprehensive test script
+```
+
+### Services Included:
+
+- **Temporal Server**: With PostgreSQL persistence
+- **Temporal Web UI**: http://localhost:8088
+- **PostgreSQL Database**: Port 5433 (to avoid conflicts)
+- **Admin Tools**: For CLI operations
+
+**📖 See [DOCKER_SETUP.md](./DOCKER_SETUP.md) for detailed configuration and troubleshooting**
+
+---
+
+## 🧪 Testing
+
+### Automated Testing
+
+```bash
+./test-docker-setup.sh      # Tests Docker setup and workflows
+```
+
+This script verifies:
+
+- ✅ Docker Compose services are running
+- ✅ Temporal server connectivity
+- ✅ Web UI accessibility
+- ✅ Application functionality
+- ✅ Complete workflow execution
+
+### Manual Testing
+
+```bash
+# Test individual endpoints
+curl -X POST http://localhost:3000/orders/demo
+curl http://localhost:3000/orders/demo/products
+curl http://localhost:3000/orders/ORDER-{id}/status
+```
+
+---
+
+## �🛠️ Development Scripts
 
 ```bash
 npm run start:dev          # Development server with hot reload

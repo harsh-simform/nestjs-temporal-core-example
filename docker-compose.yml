@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   temporal:
     image: temporalio/auto-setup:latest
@@ -8,23 +6,47 @@ services:
       - "7233:7233"
       - "8233:8233"
     environment:
-      - DB=sqlite
-      - SQLITE_PRAGMA_journal_mode=WAL
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-    volumes:
-      - ./temporal-data:/etc/temporal/config/dynamicconfig
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-postgresql
     depends_on:
-      - temporal-admin-tools
+      temporal-postgresql:
+        condition: service_healthy
+    networks:
+      - temporal-network
+
+  temporal-postgresql:
+    image: postgres:13
+    container_name: temporal-postgresql
+    environment:
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_USER: temporal
+      POSTGRES_DB: temporal
+    ports:
+      - "5433:5432"
+    volumes:
+      - temporal-postgresql-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - temporal-network
 
   temporal-admin-tools:
     image: temporalio/admin-tools:latest
     container_name: temporal-admin-tools
-    depends_on:
-      - temporal
     environment:
       - TEMPORAL_CLI_ADDRESS=temporal:7233
     stdin_open: true
     tty: true
+    depends_on:
+      - temporal
+    networks:
+      - temporal-network
 
   temporal-web:
     image: temporalio/web:latest
@@ -36,3 +58,12 @@ services:
       - TEMPORAL_PERMIT_WRITE_API=true
     depends_on:
       - temporal
+    networks:
+      - temporal-network
+
+volumes:
+  temporal-postgresql-data:
+
+networks:
+  temporal-network:
+    driver: bridge
