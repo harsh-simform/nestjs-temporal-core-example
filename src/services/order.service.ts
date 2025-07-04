@@ -22,12 +22,9 @@ export class OrderService {
       "processOrder", // This corresponds to the workflow function name in order.workflow.ts
       [enhancedOrderData],
       {
-        taskQueue: "order-processing",
+        taskQueue: process.env.TEMPORAL_TASK_QUEUE || "order-processing",
         workflowId: `order-workflow-${orderId}`,
-        searchAttributes: {
-          "customer-id": orderData.customerId,
-          "order-id": orderId,
-        },
+        // Removed searchAttributes for now to test basic functionality
       }
     );
 
@@ -112,17 +109,21 @@ export class OrderService {
 
   async listOrders(customerId?: string) {
     const fakeOrders = FakeDataGenerator.generateOrderHistory(10);
-    
+
     return {
-      orders: fakeOrders.map(order => ({
+      orders: fakeOrders.map((order) => ({
         orderId: order.orderId,
         customerId: customerId || order.customerId,
-        status: ["completed", "processing", "shipped", "pending"][Math.floor(Math.random() * 4)],
+        status: ["completed", "processing", "shipped", "pending"][
+          Math.floor(Math.random() * 4)
+        ],
         totalAmount: order.totalAmount,
-        createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(
+          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
+        ).toISOString(),
         items: order.items,
-        customerEmail: order.customerEmail
-      }))
+        customerEmail: order.customerEmail,
+      })),
     };
   }
 
@@ -163,13 +164,13 @@ export class OrderService {
 
     // Fallback to realistic fake data
     const fakeOrderHistory = FakeDataGenerator.generateOrderHistory(15);
-    const ordersWithStatus = fakeOrderHistory.map(order => ({
+    const ordersWithStatus = fakeOrderHistory.map((order) => ({
       ...FakeDataGenerator.generateOrderWithStatus(),
       customerId,
       orderId: order.orderId,
       items: order.items,
       totalAmount: order.totalAmount,
-      customerEmail: order.customerEmail
+      customerEmail: order.customerEmail,
     }));
 
     return {

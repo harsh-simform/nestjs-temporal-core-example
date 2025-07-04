@@ -6,10 +6,16 @@ import {
   Param,
   Body,
   Query,
+  NotFoundException,
+  BadRequestException,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { OrderService } from "../services/order.service";
-import { CreateOrderDto, CancelOrderDto, UpdateShippingDto } from "../dto/order.dto";
+import {
+  CreateOrderDto,
+  CancelOrderDto,
+  UpdateShippingDto,
+} from "../dto/order.dto";
 import { FakeDataGenerator } from "../utils/fake-data";
 
 @ApiTags("orders")
@@ -27,8 +33,16 @@ export class OrderController {
 
   @Get(":orderId/status")
   @ApiOperation({ summary: "Get order status" })
+  @ApiResponse({ status: 200, description: "Order status retrieved" })
+  @ApiResponse({ status: 404, description: "Order not found" })
   async getOrderStatus(@Param("orderId") orderId: string) {
-    return this.orderService.getOrderStatus(orderId);
+    const result = await this.orderService.getOrderStatus(orderId);
+
+    if (result.status === "not_found") {
+      throw new NotFoundException(result.error || "Order not found");
+    }
+
+    return result;
   }
 
   @Patch(":orderId/cancel")
@@ -39,7 +53,13 @@ export class OrderController {
     @Param("orderId") orderId: string,
     @Body() body: CancelOrderDto
   ) {
-    return this.orderService.cancelOrder(orderId, body.reason);
+    const result = await this.orderService.cancelOrder(orderId, body.reason);
+
+    if (result.status === "cancellation_failed") {
+      throw new NotFoundException(result.error || "Order not found");
+    }
+
+    return result;
   }
 
   @Patch(":orderId/shipping")
@@ -50,7 +70,16 @@ export class OrderController {
     @Param("orderId") orderId: string,
     @Body() address: UpdateShippingDto
   ) {
-    return this.orderService.updateShippingAddress(orderId, address);
+    const result = await this.orderService.updateShippingAddress(
+      orderId,
+      address
+    );
+
+    if (result.status === "update_failed") {
+      throw new NotFoundException(result.error || "Order not found");
+    }
+
+    return result;
   }
 
   @Get()
@@ -78,7 +107,7 @@ export class OrderController {
   async getDemoProducts() {
     return {
       products: FakeDataGenerator.generateEcommerceProducts(25),
-      message: "Demo product catalog with realistic fake data"
+      message: "Demo product catalog with realistic fake data",
     };
   }
 }
