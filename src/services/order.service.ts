@@ -1,183 +1,189 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { TemporalService } from "nestjs-temporal-core";
-import { FakeDataGenerator } from "../utils/fake-data";
+import {
+  OrderData,
+  OrderStatus,
+  OrderProgress,
+} from "../workflows/order.workflow";
+
+export interface CreateOrderDto {
+  customerId: string;
+  customerEmail: string;
+  customerName: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+  }>;
+  shippingAddress: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  paymentMethod: string;
+}
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(private readonly temporal: TemporalService) {}
 
-  async createOrder(orderData: any) {
-    const orderId = `ORDER-${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2)}`;
-
-    const enhancedOrderData = {
-      ...orderData,
-      orderId,
-      createdAt: new Date().toISOString(),
-    };
-
-    // Start the order processing workflow directly
-    const { workflowId, result } = await this.temporal.startWorkflow(
-      "processOrder", // This corresponds to the workflow function name in order.workflow.ts
-      [enhancedOrderData],
-      {
-        taskQueue: process.env.TEMPORAL_TASK_QUEUE || "order-processing",
-        workflowId: `order-workflow-${orderId}`,
-        // Removed searchAttributes for now to test basic functionality
-      }
-    );
-
-    return {
-      orderId,
-      workflowId,
-      status: "processing",
-      message: "Order created and processing started",
-    };
-  }
-
-  async getOrderStatus(orderId: string) {
+  async createOrder(
+    createOrderDto: CreateOrderDto
+  ): Promise<{ orderId: string; workflowId: string }> {
+    const orderId = this.generateOrderId();
     const workflowId = `order-workflow-${orderId}`;
 
+    const orderData: OrderData = {
+      orderId,
+      totalAmount: this.calculateTotal(createOrderDto.items),
+      ...createOrderDto,
+    };
+
+    this.logger.log(
+      `Creating order ${orderId} for customer ${createOrderDto.customerId}`
+    );
+
     try {
-      const status = await this.temporal.queryWorkflow(
+      await this.temporal.startWorkflow("processOrderWorkflow", [orderData], {
+        workflowId,
+        taskQueue: "order-processing",
+      });
+
+      this.logger.log(`Order workflow started: ${workflowId}`);
+
+      return {
+        orderId,
+        workflowId,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to start order workflow: ${error.message}`);
+      throw new Error(`Failed to create order: ${error.message}`);
+    }
+  }
+
+  async getOrderStatus(workflowId: string): Promise<OrderStatus> {
+    try {
+      const status = await this.temporal.queryWorkflow<OrderStatus>(
         workflowId,
         "getOrderStatus"
       );
-      const progress = await this.temporal.queryWorkflow(
-        workflowId,
-        "getProgress"
-      );
 
-      return {
-        orderId,
-        workflowId,
-        status,
-        progress,
-      };
+      return status.result;
     } catch (error) {
-      return {
-        orderId,
-        workflowId,
-        status: "not_found",
-        error: "Order not found or workflow not running",
-      };
+      this.logger.error(
+        `Failed to get order status for workflow ${workflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to get order status: ${error.message}`);
     }
   }
 
-  async cancelOrder(orderId: string, reason: string) {
-    const workflowId = `order-workflow-${orderId}`;
+  async getOrderProgress(workflowId: string): Promise<OrderProgress> {
+    try {
+      const progress = await this.temporal.queryWorkflow<OrderProgress>(
+        workflowId,
+        "getOrderProgress"
+      );
 
+      return progress.result;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get order progress for workflow ${workflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to get order progress: ${error.message}`);
+    }
+  }
+
+  async cancelOrder(workflowId: string, reason: string): Promise<void> {
     try {
       await this.temporal.signalWorkflow(workflowId, "cancelOrder", [reason]);
 
-      return {
-        orderId,
-        status: "cancellation_requested",
-        message: `Cancellation requested: ${reason}`,
-      };
-    } catch (error) {
-      return {
-        orderId,
-        status: "cancellation_failed",
-        error: error.message,
-      };
-    }
-  }
-
-  async updateShippingAddress(orderId: string, address: any) {
-    const workflowId = `order-workflow-${orderId}`;
-
-    try {
-      await this.temporal.signalWorkflow(workflowId, "updateShipping", [
-        address,
-      ]);
-
-      return {
-        orderId,
-        status: "shipping_updated",
-        message: "Shipping address updated successfully",
-      };
-    } catch (error) {
-      return {
-        orderId,
-        status: "update_failed",
-        error: error.message,
-      };
-    }
-  }
-
-  async listOrders(customerId?: string) {
-    const fakeOrders = FakeDataGenerator.generateOrderHistory(10);
-
-    return {
-      orders: fakeOrders.map((order) => ({
-        orderId: order.orderId,
-        customerId: customerId || order.customerId,
-        status: ["completed", "processing", "shipped", "pending"][
-          Math.floor(Math.random() * 4)
-        ],
-        totalAmount: order.totalAmount,
-        createdAt: new Date(
-          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000
-        ).toISOString(),
-        items: order.items,
-        customerEmail: order.customerEmail,
-      })),
-    };
-  }
-
-  async getOrderHistory(customerId: string) {
-    // This could use Temporal's list workflows API to get real order history
-    try {
-      const workflowClient = this.temporal.getClient().getWorkflowClient();
-
-      if (workflowClient) {
-        // Example of how you could list workflows for a customer
-        const workflows = workflowClient.list({
-          query: `WorkflowType = "processOrder" AND SearchAttributes["customer-id"] = "${customerId}"`,
-          pageSize: 50,
-        });
-
-        const orderHistory = [];
-        for await (const workflow of workflows) {
-          orderHistory.push({
-            workflowId: workflow.workflowId,
-            status: workflow.status,
-            startTime: workflow.startTime,
-            // You could query each workflow for more details if needed
-          });
-        }
-
-        return {
-          customerId,
-          orders: orderHistory,
-          total: orderHistory.length,
-        };
-      }
-    } catch (error) {
-      console.warn(
-        "Failed to fetch order history from Temporal:",
-        error.message
+      this.logger.log(
+        `Cancel signal sent to workflow ${workflowId}: ${reason}`
       );
+    } catch (error) {
+      this.logger.error(
+        `Failed to cancel order ${workflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to cancel order: ${error.message}`);
     }
+  }
 
-    // Fallback to realistic fake data
-    const fakeOrderHistory = FakeDataGenerator.generateOrderHistory(15);
-    const ordersWithStatus = fakeOrderHistory.map((order) => ({
-      ...FakeDataGenerator.generateOrderWithStatus(),
-      customerId,
-      orderId: order.orderId,
-      items: order.items,
-      totalAmount: order.totalAmount,
-      customerEmail: order.customerEmail,
-    }));
+  async updateOrder(
+    workflowId: string,
+    updates: Partial<OrderData>
+  ): Promise<void> {
+    try {
+      await this.temporal.signalWorkflow(workflowId, "updateOrder", [updates]);
 
-    return {
-      customerId,
-      orders: ordersWithStatus,
-      total: ordersWithStatus.length,
-      note: "Using realistic fake data - enable Temporal client for real order history",
+      this.logger.log(`Update signal sent to workflow ${workflowId}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to update order ${workflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to update order: ${error.message}`);
+    }
+  }
+
+  async listActiveOrders(): Promise<
+    Array<{ workflowId: string; status: string }>
+  > {
+    try {
+      // In a real implementation, you might use Temporal's list workflow API
+      // For now, return empty array as this requires additional setup
+      return [];
+    } catch (error) {
+      this.logger.error(`Failed to list active orders: ${error.message}`);
+      throw new Error(`Failed to list active orders: ${error.message}`);
+    }
+  }
+
+  private generateOrderId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    return `ORD-${timestamp}-${random.toUpperCase()}`;
+  }
+
+  private calculateTotal(
+    items: Array<{ quantity: number; price: number }>
+  ): number {
+    return items.reduce((total, item) => total + item.quantity * item.price, 0);
+  }
+
+  // Demo helper method
+  async createDemoOrder(): Promise<{ orderId: string; workflowId: string }> {
+    const demoOrder: CreateOrderDto = {
+      customerId: "demo-customer-001",
+      customerEmail: "demo@example.com",
+      customerName: "Demo Customer",
+      items: [
+        {
+          productId: "product-1",
+          productName: "Awesome Widget",
+          quantity: 2,
+          price: 29.99,
+        },
+        {
+          productId: "product-2",
+          productName: "Super Gadget",
+          quantity: 1,
+          price: 79.99,
+        },
+      ],
+      shippingAddress: {
+        street: "123 Demo Street",
+        city: "Demo City",
+        state: "DC",
+        zipCode: "12345",
+        country: "USA",
+      },
+      paymentMethod: "credit_card",
     };
+
+    return this.createOrder(demoOrder);
   }
 }

@@ -2,28 +2,26 @@ import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TemporalModule } from "nestjs-temporal-core";
 
-// Import our activities
-import { EmailActivities } from "./activities/email.activities";
-import { PaymentActivities } from "./activities/payment.activities";
-import { InventoryActivities } from "./activities/inventory.activities";
+// Import activity classes
+import { PaymentActivityService } from "./activities/payment.activities";
+import { InventoryActivityService } from "./activities/inventory.activities";
+import { EmailActivityService } from "./activities/email.activities";
+import { NotificationActivityService } from "./activities/notification.activities";
 
-// Import our REST controllers and services
-import { OrderController } from "./controllers/order.controller";
+// Import services and controllers
 import { OrderService } from "./services/order.service";
+import { OrderController } from "./controllers/order.controller";
 
 @Module({
   imports: [
-    // Configuration
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [".env.local", ".env"],
+      envFilePath: [".env"],
     }),
 
-    // Temporal integration with auto-discovery
     TemporalModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        // Only configure TLS if certificates are provided
         const tlsCert = configService.get("TEMPORAL_TLS_CERT");
         const tlsKey = configService.get("TEMPORAL_TLS_KEY");
 
@@ -38,44 +36,36 @@ import { OrderService } from "./services/order.service";
 
         return {
           connection: {
-            address: configService.get("TEMPORAL_ADDRESS", "localhost:7233"),
-            namespace: configService.get("TEMPORAL_NAMESPACE", "default"),
+            address: configService.get("TEMPORAL_ADDRESS"),
+            namespace: configService.get("TEMPORAL_NAMESPACE"),
             ...(tlsConfig && { tls: tlsConfig }),
           },
-          taskQueue: configService.get(
-            "TEMPORAL_TASK_QUEUE",
-            "order-processing"
-          ),
+          taskQueue: configService.get("TEMPORAL_TASK_QUEUE"),
           worker: {
-            // Path to compiled workflow files
             workflowsPath: require.resolve("./workflows"),
-            // Activity classes that will be auto-discovered
             activityClasses: [
-              EmailActivities,
-              PaymentActivities,
-              InventoryActivities,
+              PaymentActivityService,
+              InventoryActivityService,
+              EmailActivityService,
+              NotificationActivityService,
             ],
-            autoStart: true, // Automatically start the worker
+            autoStart: true,
           },
-          logLevel: "info",
+          logLevel: "debug",
           enableLogger: true,
+          autoRestart: true,
         };
       },
       inject: [ConfigService],
     }),
   ],
-  controllers: [
-    // REST API controllers only
-    OrderController,
-  ],
+  controllers: [OrderController],
   providers: [
-    // Activity classes (auto-discovered by Temporal worker)
-    EmailActivities,
-    PaymentActivities,
-    InventoryActivities,
-
-    // Regular NestJS services
     OrderService,
+    PaymentActivityService,
+    InventoryActivityService,
+    EmailActivityService,
+    NotificationActivityService,
   ],
 })
 export class AppModule {}

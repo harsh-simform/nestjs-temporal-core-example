@@ -1,171 +1,402 @@
 import {
   proxyActivities,
-  sleep,
   defineSignal,
   defineQuery,
   setHandler,
+  condition,
+  sleep,
 } from "@temporalio/workflow";
-import type { EmailActivities } from "../activities/email.activities";
-import type { PaymentActivities } from "../activities/payment.activities";
-import type { InventoryActivities } from "../activities/inventory.activities";
-import type { OrderData } from "../interfaces";
 
-// Create activity proxies for use in workflows
-const emailActivities = proxyActivities<EmailActivities>({
-  startToCloseTimeout: "2m",
-  retry: { maximumAttempts: 3 },
-});
+import type {
+  PaymentActivities,
+  PaymentResult,
+} from "../activities/payment.activities";
+import type {
+  InventoryActivities,
+  InventoryItem,
+  ReservationResult,
+} from "../activities/inventory.activities";
+import type {
+  EmailActivities,
+  OrderEmailData,
+} from "../activities/email.activities";
 
+// Define signals for external interaction
+export const cancelOrderSignal = defineSignal<[string]>("cancelOrder");
+export const updateOrderSignal =
+  defineSignal<[Partial<OrderData>]>("updateOrder");
+
+// Define queries for status checking
+export const getOrderStatusQuery = defineQuery<OrderStatus>("getOrderStatus");
+export const getOrderProgressQuery =
+  defineQuery<OrderProgress>("getOrderProgress");
+
+// Order data interface
+export interface OrderData {
+  orderId: string;
+  customerId: string;
+  customerEmail: string;
+  customerName: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+  }>;
+  totalAmount: number;
+  shippingAddress: {
+    street: string;
+    city: string;
+    state: string;
+    zipCode: string;
+    country: string;
+  };
+  paymentMethod: string;
+}
+
+// Order status interface
+export interface OrderStatus {
+  orderId: string;
+  status:
+    | "PENDING"
+    | "PAYMENT_PROCESSING"
+    | "PAYMENT_CONFIRMED"
+    | "INVENTORY_RESERVED"
+    | "CONFIRMED"
+    | "SHIPPING"
+    | "SHIPPED"
+    | "DELIVERED"
+    | "CANCELLED"
+    | "FAILED";
+  currentStep: string;
+  paymentId?: string;
+  reservationIds: string[];
+  trackingNumber?: string;
+  cancellationReason?: string;
+  error?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Order progress interface
+export interface OrderProgress {
+  orderId: string;
+  currentStep: number;
+  totalSteps: number;
+  stepName: string;
+  percentage: number;
+  estimatedCompletion?: Date;
+}
+
+// Activity proxy configuration
 const paymentActivities = proxyActivities<PaymentActivities>({
   startToCloseTimeout: "5m",
-  retry: { maximumAttempts: 5 },
+  retry: {
+    maximumAttempts: 3,
+    initialInterval: "1s",
+    maximumInterval: "10s",
+  },
 });
 
 const inventoryActivities = proxyActivities<InventoryActivities>({
-  startToCloseTimeout: "1m",
-  retry: { maximumAttempts: 3 },
+  startToCloseTimeout: "2m",
+  retry: {
+    maximumAttempts: 5,
+    initialInterval: "500ms",
+    maximumInterval: "5s",
+  },
 });
 
+const emailActivities = proxyActivities<EmailActivities>({
+  startToCloseTimeout: "1m",
+  retry: {
+    maximumAttempts: 3,
+    initialInterval: "1s",
+    maximumInterval: "5s",
+  },
+});
 
-// Define signals and queries
-export const cancelOrderSignal = defineSignal<[string]>("cancelOrder");
-export const updateShippingSignal = defineSignal<[any]>("updateShipping");
-export const getOrderStatusQuery = defineQuery<any>("getOrderStatus");
-export const getProgressQuery = defineQuery<number>("getProgress");
+export async function processOrderWorkflow(
+  orderData: OrderData
+): Promise<OrderStatus> {
+  // Initialize order status
+  let orderStatus: OrderStatus = {
+    orderId: orderData.orderId,
+    status: "PENDING",
+    currentStep: "Order received",
+    reservationIds: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 
-// Workflow state
-let status = "processing";
-let currentStep = "validation";
-let paymentId: string | undefined;
-let shippingId: string | undefined;
-let error: string | undefined;
+  let isCancelled = false;
+  let cancellationReason = "";
 
-export async function processOrder(orderData: OrderData): Promise<string> {
-  // Set up signal and query handlers
-  setHandler(cancelOrderSignal, async (reason: string) => {
-    if (status === "completed") {
-      throw new Error("Cannot cancel completed order");
-    }
-
-    status = "cancelled";
-    error = `Cancelled: ${reason}`;
+  // Set up signal handlers
+  setHandler(cancelOrderSignal, (reason: string) => {
+    isCancelled = true;
+    cancellationReason = reason;
   });
 
-  setHandler(updateShippingSignal, async (newAddress: any) => {
-    console.log("Updating shipping address:", newAddress);
-    // Update shipping address logic
+  setHandler(updateOrderSignal, (updates: Partial<OrderData>) => {
+    // Handle order updates if needed
+    Object.assign(orderData, updates);
   });
 
-  setHandler(getOrderStatusQuery, () => ({
-    status,
-    currentStep,
-    paymentId,
-    shippingId,
-    error,
-  }));
-
-  setHandler(getProgressQuery, () => {
+  // Set up query handlers
+  setHandler(getOrderStatusQuery, () => orderStatus);
+  setHandler(getOrderProgressQuery, (): OrderProgress => {
     const steps = [
-      "validation",
-      "inventory_reservation",
-      "payment_processing",
-      "inventory_confirmation",
-      "email_notification",
-      "shipping_preparation",
-      "shipping_notification",
-      "completed",
+      "Order received",
+      "Inventory check",
+      "Inventory reservation",
+      "Payment processing",
+      "Payment confirmation",
+      "Order confirmation",
+      "Shipping preparation",
+      "Order shipped",
     ];
 
-    const currentIndex = steps.indexOf(currentStep);
-    return Math.round((currentIndex / (steps.length - 1)) * 100);
+    const currentStepIndex = steps.indexOf(orderStatus.currentStep);
+    const percentage = ((currentStepIndex + 1) / steps.length) * 100;
+
+    return {
+      orderId: orderData.orderId,
+      currentStep: currentStepIndex + 1,
+      totalSteps: steps.length,
+      stepName: orderStatus.currentStep,
+      percentage: Math.round(percentage),
+      estimatedCompletion: new Date(
+        Date.now() + (steps.length - currentStepIndex - 1) * 2 * 60 * 1000
+      ), // 2 min per step
+    };
   });
 
   try {
-    status = "processing";
-    currentStep = "validation";
+    // Step 1: Validate order and check inventory
+    orderStatus.currentStep = "Inventory check";
+    orderStatus.updatedAt = new Date();
 
-    // Step 1: Validate order
-    await validateOrder(orderData);
+    if (isCancelled) {
+      throw new Error(`Order cancelled: ${cancellationReason}`);
+    }
+
+    const inventoryItems: InventoryItem[] = orderData.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    }));
+
+    const inventoryCheck = await inventoryActivities.checkInventory(
+      inventoryItems
+    );
+
+    // Check if all items are available
+    const unavailableItems = inventoryCheck.filter((check) => !check.available);
+    if (unavailableItems.length > 0) {
+      throw new Error(
+        `Insufficient inventory for products: ${unavailableItems
+          .map((item) => item.productId)
+          .join(", ")}`
+      );
+    }
 
     // Step 2: Reserve inventory
-    currentStep = "inventory_reservation";
-    const reservationId = await inventoryActivities.reserveInventory(
-      orderData.orderId,
-      orderData.items
+    orderStatus.currentStep = "Inventory reservation";
+    orderStatus.status = "INVENTORY_RESERVED";
+    orderStatus.updatedAt = new Date();
+
+    if (isCancelled) {
+      throw new Error(`Order cancelled: ${cancellationReason}`);
+    }
+
+    const reservations = await inventoryActivities.reserveInventory(
+      inventoryItems,
+      orderData.orderId
     );
+
+    // Check if all reservations were successful
+    const failedReservations = reservations.filter(
+      (res) => res.status === "FAILED"
+    );
+    if (failedReservations.length > 0) {
+      throw new Error(
+        `Failed to reserve inventory for products: ${failedReservations
+          .map((res) => res.productId)
+          .join(", ")}`
+      );
+    }
+
+    orderStatus.reservationIds = reservations.map((res) => res.reservationId);
 
     // Step 3: Process payment
-    currentStep = "payment_processing";
-    paymentId = await paymentActivities.processPayment(
-      orderData.orderId,
-      orderData.customerId,
-      orderData.totalAmount
-    );
+    orderStatus.currentStep = "Payment processing";
+    orderStatus.status = "PAYMENT_PROCESSING";
+    orderStatus.updatedAt = new Date();
 
-    // Step 4: Confirm inventory
-    currentStep = "inventory_confirmation";
-    await inventoryActivities.confirmReservation(reservationId);
+    if (isCancelled) {
+      // Release reservations before cancelling
+      await inventoryActivities.releaseReservation(orderStatus.reservationIds);
+      throw new Error(`Order cancelled: ${cancellationReason}`);
+    }
 
-    // Step 5: Send confirmation email
-    currentStep = "email_notification";
-    await emailActivities.sendOrderConfirmation(
-      orderData.customerEmail,
-      orderData.orderId,
-      paymentId
-    );
+    const paymentResult = await paymentActivities.processPayment({
+      orderId: orderData.orderId,
+      amount: orderData.totalAmount,
+      currency: "USD",
+      customerId: orderData.customerId,
+      paymentMethod: orderData.paymentMethod,
+    });
 
-    // Step 6: Schedule shipping (with delay to simulate processing time)
-    currentStep = "shipping_preparation";
-    await sleep("30s"); // Simulate processing time
+    if (paymentResult.status === "FAILED") {
+      // Release reservations
+      await inventoryActivities.releaseReservation(orderStatus.reservationIds);
+      throw new Error(`Payment failed: ${paymentResult.failureReason}`);
+    }
 
-    shippingId = await scheduleShipping(orderData);
+    orderStatus.paymentId = paymentResult.paymentId;
+    orderStatus.currentStep = "Payment confirmation";
+    orderStatus.status = "PAYMENT_CONFIRMED";
+    orderStatus.updatedAt = new Date();
 
-    // Step 7: Send shipping notification
-    currentStep = "shipping_notification";
-    await emailActivities.sendShippingNotification(
-      orderData.customerEmail,
-      orderData.orderId,
-      shippingId!
-    );
+    // Step 4: Confirm inventory reservations
+    await inventoryActivities.confirmReservation(orderStatus.reservationIds);
 
-    status = "completed";
-    currentStep = "completed";
-    return status;
-  } catch (workflowError) {
-    status = "failed";
-    error = workflowError.message;
+    // Step 5: Send confirmation emails
+    orderStatus.currentStep = "Order confirmation";
+    orderStatus.status = "CONFIRMED";
+    orderStatus.updatedAt = new Date();
+
+    const emailData: OrderEmailData = {
+      orderId: orderData.orderId,
+      customerEmail: orderData.customerEmail,
+      customerName: orderData.customerName,
+      items: orderData.items,
+      totalAmount: orderData.totalAmount,
+      paymentId: paymentResult.paymentId,
+    };
+
+    // Send order confirmation email
+    await emailActivities.sendOrderConfirmation(emailData);
+
+    // Send payment confirmation email
+    await emailActivities.sendPaymentConfirmation(emailData);
+
+    // Step 6: Prepare for shipping
+    orderStatus.currentStep = "Shipping preparation";
+    orderStatus.status = "SHIPPING";
+    orderStatus.updatedAt = new Date();
+
+    if (isCancelled) {
+      // At this point, we might not be able to cancel easily
+      // but we'll attempt compensation
+      await compensateOrder(orderStatus, emailData, cancellationReason);
+      throw new Error(
+        `Order cancelled after confirmation: ${cancellationReason}`
+      );
+    }
+
+    // Simulate shipping preparation time
+    await sleep("30s");
+
+    // Step 7: Generate tracking and mark as shipped
+    const trackingNumber = `TRK${Date.now()}${Math.random()
+      .toString(36)
+      .substr(2, 6)
+      .toUpperCase()}`;
+    orderStatus.trackingNumber = trackingNumber;
+    orderStatus.currentStep = "Order shipped";
+    orderStatus.status = "SHIPPED";
+    orderStatus.updatedAt = new Date();
+
+    // Send shipping notification
+    await emailActivities.sendShippingNotification({
+      ...emailData,
+      trackingNumber,
+    });
+
+    return orderStatus;
+  } catch (error) {
+    // Handle cancellation or failure
+    orderStatus.status = isCancelled ? "CANCELLED" : "FAILED";
+    orderStatus.cancellationReason = isCancelled
+      ? cancellationReason
+      : undefined;
+    orderStatus.error = error.message;
+    orderStatus.updatedAt = new Date();
 
     // Compensation logic
-    await compensateOrder(orderData);
-    throw workflowError;
-  }
-}
-
-async function validateOrder(orderData: OrderData): Promise<void> {
-  // Basic validation
-  if (!orderData.orderId || !orderData.customerId) {
-    throw new Error("Invalid order data");
-  }
-
-  if (orderData.items.length === 0) {
-    throw new Error("Order must contain at least one item");
-  }
-}
-
-async function scheduleShipping(orderData: OrderData): Promise<string> {
-  // Simulate shipping service call
-  return `SHIP-${orderData.orderId}-${Date.now()}`;
-}
-
-async function compensateOrder(orderData: OrderData): Promise<void> {
-  // Compensation logic for failed orders
-  if (paymentId) {
-    try {
-      await paymentActivities.refundPayment(paymentId);
-    } catch (refundError) {
-      console.error("Failed to refund payment:", refundError);
+    if (orderStatus.reservationIds.length > 0) {
+      try {
+        await inventoryActivities.releaseReservation(
+          orderStatus.reservationIds
+        );
+      } catch (compensationError) {
+        // Log compensation error but don't throw
+        console.error(
+          "Failed to release inventory reservations:",
+          compensationError
+        );
+      }
     }
-  }
 
-  // Release inventory reservations, send failure notifications, etc.
+    if (orderStatus.paymentId) {
+      try {
+        await paymentActivities.refundPayment(
+          orderStatus.paymentId,
+          orderData.totalAmount
+        );
+      } catch (compensationError) {
+        // Log compensation error but don't throw
+        console.error("Failed to refund payment:", compensationError);
+      }
+    }
+
+    // Send cancellation email if cancelled
+    if (isCancelled) {
+      try {
+        const emailData: OrderEmailData = {
+          orderId: orderData.orderId,
+          customerEmail: orderData.customerEmail,
+          customerName: orderData.customerName,
+          items: orderData.items,
+          totalAmount: orderData.totalAmount,
+        };
+
+        await emailActivities.sendOrderCancellation({
+          ...emailData,
+          reason: cancellationReason,
+        });
+      } catch (emailError) {
+        console.error("Failed to send cancellation email:", emailError);
+      }
+    }
+
+    return orderStatus;
+  }
+}
+
+// Compensation function for complex cancellation scenarios
+async function compensateOrder(
+  orderStatus: OrderStatus,
+  emailData: OrderEmailData,
+  reason: string
+): Promise<void> {
+  try {
+    // Refund payment
+    if (orderStatus.paymentId) {
+      await paymentActivities.refundPayment(
+        orderStatus.paymentId,
+        emailData.totalAmount
+      );
+    }
+
+    // Send cancellation email
+    await emailActivities.sendOrderCancellation({
+      ...emailData,
+      reason,
+    });
+  } catch (error) {
+    console.error("Compensation failed:", error);
+    // In a real system, this might trigger manual intervention
+  }
 }

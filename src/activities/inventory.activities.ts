@@ -1,75 +1,214 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { Activity, ActivityMethod } from "nestjs-temporal-core";
-import type { InventoryItem } from "../interfaces";
 
+export interface InventoryItem {
+  productId: string;
+  quantity: number;
+}
+
+export interface InventoryCheckResult {
+  productId: string;
+  available: boolean;
+  availableQuantity: number;
+  requestedQuantity: number;
+}
+
+export interface ReservationResult {
+  reservationId: string;
+  productId: string;
+  quantity: number;
+  expiresAt: Date;
+  status: "RESERVED" | "FAILED";
+}
+
+export interface InventoryActivities {
+  checkInventory(items: InventoryItem[]): Promise<InventoryCheckResult[]>;
+  reserveInventory(
+    items: InventoryItem[],
+    orderId: string
+  ): Promise<ReservationResult[]>;
+  releaseReservation(reservationIds: string[]): Promise<void>;
+  confirmReservation(reservationIds: string[]): Promise<void>;
+  updateInventory(productId: string, quantity: number): Promise<void>;
+}
 
 @Injectable()
 @Activity()
-export class InventoryActivities {
-  private reservations = new Map<string, InventoryItem[]>();
+export class InventoryActivityService implements InventoryActivities {
+  private readonly logger = new Logger(InventoryActivityService.name);
+
+  // Simulate inventory database
+  private inventory = new Map<string, number>([
+    ["product-1", 100],
+    ["product-2", 50],
+    ["product-3", 25],
+    ["product-4", 75],
+    ["product-5", 0],
+  ]);
+
+  private reservations = new Map<
+    string,
+    { productId: string; quantity: number; orderId: string; expiresAt: Date }
+  >();
+
+  @ActivityMethod()
+  async checkInventory(
+    items: InventoryItem[]
+  ): Promise<InventoryCheckResult[]> {
+    this.logger.log(`Checking inventory for ${items.length} items`);
+
+    // Simulate database query delay
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    const results: InventoryCheckResult[] = items.map((item) => {
+      const availableQuantity = this.inventory.get(item.productId) || 0;
+      const available = availableQuantity >= item.quantity;
+
+      this.logger.log(
+        `Product ${item.productId}: requested ${item.quantity}, available ${availableQuantity}, sufficient: ${available}`
+      );
+
+      return {
+        productId: item.productId,
+        available,
+        availableQuantity,
+        requestedQuantity: item.quantity,
+      };
+    });
+
+    return results;
+  }
 
   @ActivityMethod()
   async reserveInventory(
-    orderId: string,
-    items: InventoryItem[]
-  ): Promise<string> {
-    console.log(`📦 Reserving inventory for order ${orderId}`);
+    items: InventoryItem[],
+    orderId: string
+  ): Promise<ReservationResult[]> {
+    this.logger.log(
+      `Reserving inventory for order ${orderId}, ${items.length} items`
+    );
 
-    await this.delay(1000);
+    // Simulate reservation processing delay
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
-    // Simulate inventory checks
+    const results: ReservationResult[] = [];
+
     for (const item of items) {
-      if (Math.random() < 0.05) {
-        throw new Error(`Product ${item.productId} is out of stock`);
+      const availableQuantity = this.inventory.get(item.productId) || 0;
+
+      if (availableQuantity >= item.quantity) {
+        const reservationId = `res_${Date.now()}_${Math.random()
+          .toString(36)
+          .substr(2, 9)}`;
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+        // Update inventory (temporary reservation)
+        this.inventory.set(item.productId, availableQuantity - item.quantity);
+
+        // Store reservation
+        this.reservations.set(reservationId, {
+          productId: item.productId,
+          quantity: item.quantity,
+          orderId,
+          expiresAt,
+        });
+
+        results.push({
+          reservationId,
+          productId: item.productId,
+          quantity: item.quantity,
+          expiresAt,
+          status: "RESERVED",
+        });
+
+        this.logger.log(
+          `Reserved ${item.quantity} units of ${item.productId} (reservation: ${reservationId})`
+        );
+      } else {
+        results.push({
+          reservationId: "",
+          productId: item.productId,
+          quantity: item.quantity,
+          expiresAt: new Date(),
+          status: "FAILED",
+        });
+
+        this.logger.error(
+          `Failed to reserve ${item.quantity} units of ${item.productId} (only ${availableQuantity} available)`
+        );
       }
     }
 
-    const reservationId = `RES-${orderId}-${Date.now()}`;
-    this.reservations.set(reservationId, items);
-
-    console.log(`✅ Inventory reserved successfully: ${reservationId}`);
-    return reservationId;
+    return results;
   }
 
   @ActivityMethod()
-  async confirmReservation(reservationId: string): Promise<void> {
-    console.log(`✅ Confirming inventory reservation ${reservationId}`);
+  async releaseReservation(reservationIds: string[]): Promise<void> {
+    this.logger.log(`Releasing ${reservationIds.length} reservations`);
 
-    await this.delay(500);
+    // Simulate processing delay
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    if (!this.reservations.has(reservationId)) {
-      throw new Error(`Reservation ${reservationId} not found`);
+    for (const reservationId of reservationIds) {
+      const reservation = this.reservations.get(reservationId);
+
+      if (reservation) {
+        // Return inventory
+        const currentQuantity = this.inventory.get(reservation.productId) || 0;
+        this.inventory.set(
+          reservation.productId,
+          currentQuantity + reservation.quantity
+        );
+
+        // Remove reservation
+        this.reservations.delete(reservationId);
+
+        this.logger.log(
+          `Released reservation ${reservationId} for ${reservation.quantity} units of ${reservation.productId}`
+        );
+      }
     }
-
-    // In a real system, this would update the actual inventory
-    console.log(`✅ Inventory reservation confirmed`);
   }
 
   @ActivityMethod()
-  async releaseReservation(reservationId: string): Promise<void> {
-    console.log(`🔄 Releasing inventory reservation ${reservationId}`);
+  async confirmReservation(reservationIds: string[]): Promise<void> {
+    this.logger.log(`Confirming ${reservationIds.length} reservations`);
 
-    await this.delay(300);
+    // Simulate processing delay
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
-    this.reservations.delete(reservationId);
+    for (const reservationId of reservationIds) {
+      const reservation = this.reservations.get(reservationId);
 
-    console.log(`✅ Inventory reservation released`);
+      if (reservation) {
+        // Remove reservation (inventory already deducted during reservation)
+        this.reservations.delete(reservationId);
+
+        this.logger.log(
+          `Confirmed reservation ${reservationId} for ${reservation.quantity} units of ${reservation.productId}`
+        );
+      }
+    }
   }
 
   @ActivityMethod()
-  async checkInventory(productId: string): Promise<number> {
-    console.log(`🔍 Checking inventory for product ${productId}`);
+  async updateInventory(productId: string, quantity: number): Promise<void> {
+    this.logger.log(
+      `Updating inventory for ${productId}: ${
+        quantity > 0 ? "+" : ""
+      }${quantity}`
+    );
 
-    await this.delay(200);
+    // Simulate update delay
+    await new Promise((resolve) => setTimeout(resolve, 400));
 
-    // Simulate inventory levels
-    const quantity = Math.floor(Math.random() * 100) + 10;
+    const currentQuantity = this.inventory.get(productId) || 0;
+    this.inventory.set(productId, Math.max(0, currentQuantity + quantity));
 
-    console.log(`📦 Product ${productId} has ${quantity} units available`);
-    return quantity;
-  }
-
-  private async delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    this.logger.log(
+      `Inventory updated for ${productId}: new quantity ${this.inventory.get(
+        productId
+      )}`
+    );
   }
 }
