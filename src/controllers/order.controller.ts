@@ -19,6 +19,11 @@ import {
 } from "@nestjs/swagger";
 import { OrderService, CreateOrderDto } from "../services/order.service";
 import { OrderStatus, OrderProgress } from "../workflows/order.workflow";
+import {
+  FulfillmentStatus,
+  FulfillmentProgress,
+  type ShippingAddress,
+} from "../workflows/fulfillment.workflow";
 
 @ApiTags("orders")
 @Controller("orders")
@@ -313,6 +318,172 @@ export class OrderController {
       this.logger.error(`Failed to list active orders: ${error.message}`);
       throw new HttpException(
         `Failed to list active orders: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  // Fulfillment control endpoints
+  @Post(":workflowId/fulfillment/pause")
+  @ApiOperation({ summary: "Pause order fulfillment" })
+  @ApiParam({ name: "workflowId", description: "Workflow ID of the order" })
+  @ApiResponse({
+    status: 200,
+    description: "Fulfillment paused successfully",
+    schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", example: "Fulfillment paused" },
+      },
+    },
+  })
+  async pauseFulfillment(@Param("workflowId") workflowId: string) {
+    try {
+      this.logger.log(`Pausing fulfillment for order workflow: ${workflowId}`);
+      await this.orderService.pauseOrderFulfillment(workflowId);
+      return { message: "Fulfillment paused" };
+    } catch (error) {
+      this.logger.error(`Failed to pause fulfillment: ${error.message}`);
+      throw new HttpException(
+        `Failed to pause fulfillment: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Post(":workflowId/fulfillment/resume")
+  @ApiOperation({ summary: "Resume order fulfillment" })
+  @ApiParam({ name: "workflowId", description: "Workflow ID of the order" })
+  @ApiResponse({
+    status: 200,
+    description: "Fulfillment resumed successfully",
+    schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", example: "Fulfillment resumed" },
+      },
+    },
+  })
+  async resumeFulfillment(@Param("workflowId") workflowId: string) {
+    try {
+      this.logger.log(`Resuming fulfillment for order workflow: ${workflowId}`);
+      await this.orderService.resumeOrderFulfillment(workflowId);
+      return { message: "Fulfillment resumed" };
+    } catch (error) {
+      this.logger.error(`Failed to resume fulfillment: ${error.message}`);
+      throw new HttpException(
+        `Failed to resume fulfillment: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR
+      );
+    }
+  }
+
+  @Get("fulfillment/:fulfillmentWorkflowId/status")
+  @ApiOperation({ summary: "Get fulfillment status" })
+  @ApiParam({
+    name: "fulfillmentWorkflowId",
+    description: "Fulfillment workflow ID",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Fulfillment status retrieved successfully",
+    type: "object",
+  })
+  async getFulfillmentStatus(
+    @Param("fulfillmentWorkflowId") fulfillmentWorkflowId: string
+  ): Promise<FulfillmentStatus> {
+    try {
+      this.logger.log(
+        `Getting fulfillment status for workflow: ${fulfillmentWorkflowId}`
+      );
+      return await this.orderService.getFulfillmentStatus(
+        fulfillmentWorkflowId
+      );
+    } catch (error) {
+      this.logger.error(`Failed to get fulfillment status: ${error.message}`);
+      throw new HttpException(
+        `Failed to get fulfillment status: ${error.message}`,
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
+  @Get("fulfillment/:fulfillmentWorkflowId/progress")
+  @ApiOperation({ summary: "Get fulfillment progress" })
+  @ApiParam({
+    name: "fulfillmentWorkflowId",
+    description: "Fulfillment workflow ID",
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Fulfillment progress retrieved successfully",
+    type: "object",
+  })
+  async getFulfillmentProgress(
+    @Param("fulfillmentWorkflowId") fulfillmentWorkflowId: string
+  ): Promise<FulfillmentProgress> {
+    try {
+      this.logger.log(
+        `Getting fulfillment progress for workflow: ${fulfillmentWorkflowId}`
+      );
+      return await this.orderService.getFulfillmentProgress(
+        fulfillmentWorkflowId
+      );
+    } catch (error) {
+      this.logger.error(`Failed to get fulfillment progress: ${error.message}`);
+      throw new HttpException(
+        `Failed to get fulfillment progress: ${error.message}`,
+        HttpStatus.NOT_FOUND
+      );
+    }
+  }
+
+  @Patch("fulfillment/:fulfillmentWorkflowId/shipping-address")
+  @ApiOperation({ summary: "Update shipping address for fulfillment" })
+  @ApiParam({
+    name: "fulfillmentWorkflowId",
+    description: "Fulfillment workflow ID",
+  })
+  @ApiBody({
+    schema: {
+      type: "object",
+      properties: {
+        street: { type: "string", example: "456 New Street" },
+        city: { type: "string", example: "New City" },
+        state: { type: "string", example: "NC" },
+        zipCode: { type: "string", example: "54321" },
+        country: { type: "string", example: "USA" },
+      },
+      required: ["street", "city", "state", "zipCode", "country"],
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: "Shipping address updated successfully",
+    schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", example: "Shipping address updated" },
+      },
+    },
+  })
+  async updateShippingAddress(
+    @Param("fulfillmentWorkflowId") fulfillmentWorkflowId: string,
+    @Body() newAddress: ShippingAddress
+  ) {
+    try {
+      this.logger.log(
+        `Updating shipping address for fulfillment workflow: ${fulfillmentWorkflowId}`
+      );
+      await this.orderService.updateShippingAddress(
+        fulfillmentWorkflowId,
+        newAddress
+      );
+      return { message: "Shipping address updated" };
+    } catch (error) {
+      this.logger.error(`Failed to update shipping address: ${error.message}`);
+      throw new HttpException(
+        `Failed to update shipping address: ${error.message}`,
         HttpStatus.INTERNAL_SERVER_ERROR
       );
     }

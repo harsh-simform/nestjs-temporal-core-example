@@ -4,3 +4,4 @@
  */
 
 export * from "./order.workflow";
+export * from "./fulfillment.workflow";

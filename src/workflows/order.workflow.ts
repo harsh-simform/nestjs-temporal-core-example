@@ -5,6 +5,8 @@ import {
   setHandler,
   condition,
   sleep,
+  getExternalWorkflowHandle,
+  workflowInfo,
 } from "@temporalio/workflow";
 
 import type {
@@ -20,11 +22,28 @@ import type {
   EmailActivities,
   OrderEmailData,
 } from "../activities/email.activities";
+import type {
+  WorkflowActivities,
+  StartFulfillmentWorkflowResult,
+} from "../activities/workflow.activities";
+import type {
+  FulfillmentRequest,
+  FulfillmentStatus,
+} from "./fulfillment.workflow";
 
 // Define signals for external interaction
 export const cancelOrderSignal = defineSignal<[string]>("cancelOrder");
 export const updateOrderSignal =
   defineSignal<[Partial<OrderData>]>("updateOrder");
+export const pauseOrderFulfillmentSignal = defineSignal(
+  "pauseOrderFulfillment"
+);
+export const resumeOrderFulfillmentSignal = defineSignal(
+  "resumeOrderFulfillment"
+);
+export const fulfillmentCompletedSignal = defineSignal<[FulfillmentStatus]>(
+  "fulfillmentCompleted"
+);
 
 // Define queries for status checking
 export const getOrderStatusQuery = defineQuery<OrderStatus>("getOrderStatus");
@@ -63,6 +82,8 @@ export interface OrderStatus {
     | "PAYMENT_CONFIRMED"
     | "INVENTORY_RESERVED"
     | "CONFIRMED"
+    | "FULFILLMENT_STARTED"
+    | "FULFILLMENT_IN_PROGRESS"
     | "SHIPPING"
     | "SHIPPED"
     | "DELIVERED"
@@ -72,10 +93,13 @@ export interface OrderStatus {
   paymentId?: string;
   reservationIds: string[];
   trackingNumber?: string;
+  fulfillmentWorkflowId?: string;
+  fulfillmentStatus?: FulfillmentStatus;
   cancellationReason?: string;
   error?: string;
   createdAt: Date;
   updatedAt: Date;
+  result: any;
 }
 
 // Order progress interface
@@ -86,6 +110,7 @@ export interface OrderProgress {
   stepName: string;
   percentage: number;
   estimatedCompletion?: Date;
+  result?: any;
 }
 
 // Activity proxy configuration
@@ -116,6 +141,15 @@ const emailActivities = proxyActivities<EmailActivities>({
   },
 });
 
+const workflowActivities = proxyActivities<WorkflowActivities>({
+  startToCloseTimeout: "30s",
+  retry: {
+    maximumAttempts: 3,
+    initialInterval: "1s",
+    maximumInterval: "5s",
+  },
+});
+
 export async function processOrderWorkflow(
   orderData: OrderData
 ): Promise<OrderStatus> {
@@ -127,10 +161,13 @@ export async function processOrderWorkflow(
     reservationIds: [],
     createdAt: new Date(),
     updatedAt: new Date(),
+    result: null,
   };
 
   let isCancelled = false;
   let cancellationReason = "";
+  let fulfillmentWorkflowId: string | null = null;
+  let fulfillmentCompletedStatus: FulfillmentStatus | null = null;
 
   // Set up signal handlers
   setHandler(cancelOrderSignal, (reason: string) => {
@@ -141,6 +178,30 @@ export async function processOrderWorkflow(
   setHandler(updateOrderSignal, (updates: Partial<OrderData>) => {
     // Handle order updates if needed
     Object.assign(orderData, updates);
+  });
+
+  setHandler(pauseOrderFulfillmentSignal, async () => {
+    if (fulfillmentWorkflowId) {
+      await workflowActivities.signalFulfillmentWorkflow({
+        fulfillmentWorkflowId,
+        signalName: "pauseFulfillment",
+        args: [],
+      });
+    }
+  });
+
+  setHandler(resumeOrderFulfillmentSignal, async () => {
+    if (fulfillmentWorkflowId) {
+      await workflowActivities.signalFulfillmentWorkflow({
+        fulfillmentWorkflowId,
+        signalName: "resumeFulfillment",
+        args: [],
+      });
+    }
+  });
+
+  setHandler(fulfillmentCompletedSignal, (status: FulfillmentStatus) => {
+    fulfillmentCompletedStatus = status;
   });
 
   // Set up query handlers
@@ -261,58 +322,119 @@ export async function processOrderWorkflow(
     // Step 4: Confirm inventory reservations
     await inventoryActivities.confirmReservation(orderStatus.reservationIds);
 
-    // Step 5: Send confirmation emails
-    orderStatus.currentStep = "Order confirmation";
+    orderStatus.currentStep = "Order confirmed, preparing fulfillment";
     orderStatus.status = "CONFIRMED";
     orderStatus.updatedAt = new Date();
 
-    const emailData: OrderEmailData = {
-      orderId: orderData.orderId,
-      customerEmail: orderData.customerEmail,
-      customerName: orderData.customerName,
-      items: orderData.items,
-      totalAmount: orderData.totalAmount,
-      paymentId: paymentResult.paymentId,
-    };
-
-    // Send order confirmation email
-    await emailActivities.sendOrderConfirmation(emailData);
-
-    // Send payment confirmation email
-    await emailActivities.sendPaymentConfirmation(emailData);
-
-    // Step 6: Prepare for shipping
-    orderStatus.currentStep = "Shipping preparation";
-    orderStatus.status = "SHIPPING";
+    // Step 5: Start independent fulfillment workflow via activity
+    orderStatus.currentStep = "Starting fulfillment";
+    orderStatus.status = "FULFILLMENT_STARTED";
     orderStatus.updatedAt = new Date();
 
     if (isCancelled) {
-      // At this point, we might not be able to cancel easily
-      // but we'll attempt compensation
-      await compensateOrder(orderStatus, emailData, cancellationReason);
       throw new Error(
         `Order cancelled after confirmation: ${cancellationReason}`
       );
     }
 
-    // Simulate shipping preparation time
-    await sleep("30s");
+    // Get current workflow ID to enable fulfillment to signal back
+    const currentWorkflowId = workflowInfo().workflowId;
 
-    // Step 7: Generate tracking and mark as shipped
-    const trackingNumber = `TRK${Date.now()}${Math.random()
-      .toString(36)
-      .substr(2, 6)
-      .toUpperCase()}`;
-    orderStatus.trackingNumber = trackingNumber;
-    orderStatus.currentStep = "Order shipped";
-    orderStatus.status = "SHIPPED";
+    // Prepare fulfillment request
+    const fulfillmentRequest: FulfillmentRequest = {
+      orderId: orderData.orderId,
+      customerId: orderData.customerId,
+      customerEmail: orderData.customerEmail,
+      customerName: orderData.customerName,
+      items: orderData.items,
+      totalAmount: orderData.totalAmount,
+      shippingAddress: orderData.shippingAddress,
+      paymentId: paymentResult.paymentId,
+      reservationIds: orderStatus.reservationIds,
+      orderWorkflowId: currentWorkflowId, // Pass parent workflow ID for signaling back
+    };
+
+    // Start fulfillment workflow as independent workflow via activity
+    const fulfillmentResult: StartFulfillmentWorkflowResult =
+      await workflowActivities.startFulfillmentWorkflow({
+        orderId: orderData.orderId,
+        fulfillmentRequest,
+      });
+
+    if (!fulfillmentResult.started) {
+      throw new Error(
+        `Failed to start fulfillment workflow: ${fulfillmentResult.error}`
+      );
+    }
+
+    fulfillmentWorkflowId = fulfillmentResult.fulfillmentWorkflowId;
+    orderStatus.fulfillmentWorkflowId = fulfillmentWorkflowId;
+    orderStatus.currentStep = "Fulfillment in progress";
+    orderStatus.status = "FULFILLMENT_IN_PROGRESS";
     orderStatus.updatedAt = new Date();
 
-    // Send shipping notification
-    await emailActivities.sendShippingNotification({
-      ...emailData,
-      trackingNumber,
-    });
+    // Wait for fulfillment completion signal from fulfillment workflow
+    // This is truly loosely coupled - fulfillment signals back when done
+    await condition(() => fulfillmentCompletedStatus !== null || isCancelled);
+
+    if (isCancelled) {
+      throw new Error(
+        `Order cancelled during fulfillment: ${cancellationReason}`
+      );
+    }
+
+    // Process fulfillment completion status received via signal
+    if (fulfillmentCompletedStatus) {
+      orderStatus.fulfillmentStatus = fulfillmentCompletedStatus;
+
+      if (fulfillmentCompletedStatus.status === "SHIPPED") {
+        orderStatus.status = "SHIPPED";
+        orderStatus.currentStep = "Order shipped";
+        orderStatus.trackingNumber = fulfillmentCompletedStatus.trackingNumber;
+      } else if (fulfillmentCompletedStatus.status === "CANCELLED") {
+        orderStatus.status = "CANCELLED";
+        orderStatus.currentStep = "Fulfillment cancelled";
+        orderStatus.cancellationReason =
+          fulfillmentCompletedStatus.cancellationReason;
+      } else if (fulfillmentCompletedStatus.status === "FAILED") {
+        orderStatus.status = "FAILED";
+        orderStatus.error = fulfillmentCompletedStatus.error;
+      }
+
+      orderStatus.updatedAt = new Date();
+    }
+
+    // Step 6: Send confirmation emails AFTER fulfillment completes
+    if (fulfillmentCompletedStatus?.status === "SHIPPED") {
+      orderStatus.currentStep = "Sending confirmation emails";
+      orderStatus.updatedAt = new Date();
+
+      const emailData: OrderEmailData = {
+        orderId: orderData.orderId,
+        customerEmail: orderData.customerEmail,
+        customerName: orderData.customerName,
+        items: orderData.items,
+        totalAmount: orderData.totalAmount,
+        paymentId: paymentResult.paymentId,
+      };
+
+      // Send order confirmation email
+      await emailActivities.sendOrderConfirmation(emailData);
+
+      // Send payment confirmation email
+      await emailActivities.sendPaymentConfirmation(emailData);
+
+      // Send shipping notification with tracking number
+      if (fulfillmentCompletedStatus.trackingNumber) {
+        await emailActivities.sendShippingNotification({
+          ...emailData,
+          trackingNumber: fulfillmentCompletedStatus.trackingNumber,
+        });
+      }
+
+      orderStatus.currentStep = "Order completed";
+      orderStatus.updatedAt = new Date();
+    }
 
     return orderStatus;
   } catch (error) {
@@ -323,6 +445,19 @@ export async function processOrderWorkflow(
       : undefined;
     orderStatus.error = error.message;
     orderStatus.updatedAt = new Date();
+
+    // Cancel independent fulfillment workflow if it exists
+    if (fulfillmentWorkflowId && isCancelled) {
+      try {
+        await workflowActivities.signalFulfillmentWorkflow({
+          fulfillmentWorkflowId,
+          signalName: "cancelFulfillment",
+          args: [cancellationReason],
+        });
+      } catch (signalError) {
+        console.error("Failed to cancel fulfillment workflow:", signalError);
+      }
+    }
 
     // Compensation logic
     if (orderStatus.reservationIds.length > 0) {

@@ -26,7 +26,7 @@
     "@temporalio/workflow": "^1.12.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.0",
-    "nestjs-temporal-core": "file:.yalc/nestjs-temporal-core",
+    "nestjs-temporal-core": "^3.0.10",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

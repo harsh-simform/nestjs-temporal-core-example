@@ -5,6 +5,11 @@ import {
   OrderStatus,
   OrderProgress,
 } from "../workflows/order.workflow";
+import {
+  FulfillmentStatus,
+  FulfillmentProgress,
+  type ShippingAddress,
+} from "../workflows/fulfillment.workflow";
 
 export interface CreateOrderDto {
   customerId: string;
@@ -73,7 +78,7 @@ export class OrderService {
         "getOrderStatus"
       );
 
-      return status.result;
+      return status;
     } catch (error) {
       this.logger.error(
         `Failed to get order status for workflow ${workflowId}: ${error.message}`
@@ -89,7 +94,7 @@ export class OrderService {
         "getOrderProgress"
       );
 
-      return progress.result;
+      return progress;
     } catch (error) {
       this.logger.error(
         `Failed to get order progress for workflow ${workflowId}: ${error.message}`
@@ -139,6 +144,98 @@ export class OrderService {
     } catch (error) {
       this.logger.error(`Failed to list active orders: ${error.message}`);
       throw new Error(`Failed to list active orders: ${error.message}`);
+    }
+  }
+
+  // Fulfillment control methods
+  async pauseOrderFulfillment(workflowId: string): Promise<void> {
+    try {
+      await this.temporal.signalWorkflow(
+        workflowId,
+        "pauseOrderFulfillment",
+        []
+      );
+      this.logger.log(
+        `Pause fulfillment signal sent to workflow ${workflowId}`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to pause fulfillment for order ${workflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to pause fulfillment: ${error.message}`);
+    }
+  }
+
+  async resumeOrderFulfillment(workflowId: string): Promise<void> {
+    try {
+      await this.temporal.signalWorkflow(
+        workflowId,
+        "resumeOrderFulfillment",
+        []
+      );
+      this.logger.log(
+        `Resume fulfillment signal sent to workflow ${workflowId}`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to resume fulfillment for order ${workflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to resume fulfillment: ${error.message}`);
+    }
+  }
+
+  async getFulfillmentStatus(
+    fulfillmentWorkflowId: string
+  ): Promise<FulfillmentStatus> {
+    try {
+      const status = await this.temporal.queryWorkflow<FulfillmentStatus>(
+        fulfillmentWorkflowId,
+        "getFulfillmentStatus"
+      );
+      return status;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get fulfillment status for workflow ${fulfillmentWorkflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to get fulfillment status: ${error.message}`);
+    }
+  }
+
+  async getFulfillmentProgress(
+    fulfillmentWorkflowId: string
+  ): Promise<FulfillmentProgress> {
+    try {
+      const progress = await this.temporal.queryWorkflow<FulfillmentProgress>(
+        fulfillmentWorkflowId,
+        "getFulfillmentProgress"
+      );
+      return progress;
+    } catch (error) {
+      this.logger.error(
+        `Failed to get fulfillment progress for workflow ${fulfillmentWorkflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to get fulfillment progress: ${error.message}`);
+    }
+  }
+
+  async updateShippingAddress(
+    fulfillmentWorkflowId: string,
+    newAddress: ShippingAddress
+  ): Promise<void> {
+    try {
+      await this.temporal.signalWorkflow(
+        fulfillmentWorkflowId,
+        "updateShippingAddress",
+        [newAddress]
+      );
+      this.logger.log(
+        `Shipping address update signal sent to fulfillment workflow ${fulfillmentWorkflowId}`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to update shipping address for fulfillment ${fulfillmentWorkflowId}: ${error.message}`
+      );
+      throw new Error(`Failed to update shipping address: ${error.message}`);
     }
   }
 

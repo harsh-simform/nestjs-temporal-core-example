@@ -7,6 +7,7 @@ import { PaymentActivityService } from "./activities/payment.activities";
 import { InventoryActivityService } from "./activities/inventory.activities";
 import { EmailActivityService } from "./activities/email.activities";
 import { NotificationActivityService } from "./activities/notification.activities";
+import { WorkflowActivityService } from "./activities/workflow.activities";
 
 // Import services and controllers
 import { OrderService } from "./services/order.service";
@@ -48,6 +49,7 @@ import { OrderController } from "./controllers/order.controller";
               InventoryActivityService,
               EmailActivityService,
               NotificationActivityService,
+              WorkflowActivityService,
             ],
             autoStart: true,
           },
@@ -66,6 +68,7 @@ import { OrderController } from "./controllers/order.controller";
     InventoryActivityService,
     EmailActivityService,
     NotificationActivityService,
+    WorkflowActivityService,
   ],
 })
 export class AppModule {}
