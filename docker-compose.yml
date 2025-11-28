@@ -1,7 +1,7 @@
 services:
   temporal:
-    image: temporalio/auto-setup:1.28.0
     container_name: temporal-dev
+    image: temporalio/auto-setup:latest
     depends_on:
       postgresql:
         condition: service_healthy
@@ -19,8 +19,8 @@ services:
       - "7233:7233"
 
   temporal-admin-tools:
-    image: temporalio/admin-tools:1.28.0-tctl-1.18.2-cli-1.3.0
     container_name: temporal-admin-tools-dev
+    image: temporalio/admin-tools:latest
     depends_on:
       - temporal
     environment:
@@ -51,8 +51,8 @@ services:
       retries: 5
 
   temporal-ui:
-    image: temporalio/ui:2.34.0
     container_name: temporal-ui-dev
+    image: temporalio/ui:latest
     depends_on:
       - temporal
     environment:
