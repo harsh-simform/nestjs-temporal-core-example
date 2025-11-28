@@ -3,23 +3,22 @@ import {
   defineSignal,
   defineQuery,
   setHandler,
-  condition,
   sleep,
 } from "@temporalio/workflow";
-
-import type {
-  PaymentActivities,
-  PaymentResult,
-} from "../activities/payment.activities";
-import type {
-  InventoryActivities,
-  InventoryItem,
-  ReservationResult,
-} from "../activities/inventory.activities";
-import type {
+import {
   EmailActivities,
   OrderEmailData,
-} from "../activities/email.activities";
+} from "src/interfaces/email.interface";
+import {
+  InventoryActivities,
+  InventoryItem,
+} from "src/interfaces/inventory.interface";
+import {
+  OrderData,
+  OrderProgress,
+  OrderStatus,
+} from "src/interfaces/order.interface";
+import { PaymentActivities } from "src/interfaces/payment.interface";
 
 // Define signals for external interaction
 export const cancelOrderSignal = defineSignal<[string]>("cancelOrder");
@@ -30,63 +29,6 @@ export const updateOrderSignal =
 export const getOrderStatusQuery = defineQuery<OrderStatus>("getOrderStatus");
 export const getOrderProgressQuery =
   defineQuery<OrderProgress>("getOrderProgress");
-
-// Order data interface
-export interface OrderData {
-  orderId: string;
-  customerId: string;
-  customerEmail: string;
-  customerName: string;
-  items: Array<{
-    productId: string;
-    productName: string;
-    quantity: number;
-    price: number;
-  }>;
-  totalAmount: number;
-  shippingAddress: {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-  };
-  paymentMethod: string;
-}
-
-// Order status interface
-export interface OrderStatus {
-  orderId: string;
-  status:
-    | "PENDING"
-    | "PAYMENT_PROCESSING"
-    | "PAYMENT_CONFIRMED"
-    | "INVENTORY_RESERVED"
-    | "CONFIRMED"
-    | "SHIPPING"
-    | "SHIPPED"
-    | "DELIVERED"
-    | "CANCELLED"
-    | "FAILED";
-  currentStep: string;
-  paymentId?: string;
-  reservationIds: string[];
-  trackingNumber?: string;
-  cancellationReason?: string;
-  error?: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// Order progress interface
-export interface OrderProgress {
-  orderId: string;
-  currentStep: number;
-  totalSteps: number;
-  stepName: string;
-  percentage: number;
-  estimatedCompletion?: Date;
-}
 
 // Activity proxy configuration
 const paymentActivities = proxyActivities<PaymentActivities>({

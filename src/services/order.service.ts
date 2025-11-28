@@ -1,30 +1,11 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { TemporalService } from "nestjs-temporal-core";
 import {
+  CreateOrderDto,
   OrderData,
-  OrderStatus,
   OrderProgress,
-} from "../workflows/order.workflow";
-
-export interface CreateOrderDto {
-  customerId: string;
-  customerEmail: string;
-  customerName: string;
-  items: Array<{
-    productId: string;
-    productName: string;
-    quantity: number;
-    price: number;
-  }>;
-  shippingAddress: {
-    street: string;
-    city: string;
-    state: string;
-    zipCode: string;
-    country: string;
-  };
-  paymentMethod: string;
-}
+  OrderStatus,
+} from "src/interfaces/order.interface";
 
 @Injectable()
 export class OrderService {

@@ -17,8 +17,12 @@ import {
   ApiParam,
   ApiBody,
 } from "@nestjs/swagger";
-import { OrderService, CreateOrderDto } from "../services/order.service";
-import { OrderStatus, OrderProgress } from "../workflows/order.workflow";
+import {
+  CreateOrderDto,
+  OrderProgress,
+  OrderStatus,
+} from "src/interfaces/order.interface";
+import { OrderService } from "src/services/order.service";
 
 @ApiTags("orders")
 @Controller("orders")
